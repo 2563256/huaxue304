@@ -1,0 +1,102 @@
+# ros2_control configuration for the light differential-drive AMR.
+#
+# LAYOUT MATTERS - this is the canonical ros2_control form, and getting it
+# wrong produces two very confusing, opposite-looking errors:
+#
+#   "The 'type' param was not defined for 'diff_drive_controller'"
+#   "Parameter 'left_wheel_names' cannot be empty"
+#   "Cannot have a value before ros__parameters"
+#
+# The rules, all three of which must hold at once:
+#
+#   1. The controller TYPE is a child key inside controller_manager's own
+#      ros__parameters block:
+#          controller_manager:
+#            ros__parameters:
+#              <name>:
+#                type: <plugin/type string>
+#      (This nested form is required by the Jazzy controller_manager parser.)
+#
+#   2. The controller's own parameters live in a SEPARATE top-level section
+#      named after the controller, whose first child must be ros__parameters:
+#          <name>:
+#            ros__parameters:
+#              ...
+#
+#   3. rcl's params-file parser requires ros__parameters to be the FIRST child
+#      of every top-level key (otherwise: "Cannot have a value before
+#      ros__parameters"). Keep controller type entries nested under
+#      controller_manager/ros__parameters as shown above.
+#
+# This follows the Jazzy controller_manager parameter-file layout used by
+# Clearpath and other ros2_control integrations.
+#
+# The launch file rewrites <robot_name> to the concrete instance
+# (light_1, light_2, ...) and writes a per-robot copy.
+#
+# Geometry from the URDF (already rescaled by s=0.60 for the scanned map; see
+# light_diff_amr.xacro - its header explains why the scale is 0.41 and not the
+# 0.70 quoted in MAP_SWAP.md): wheel_radius 0.0451, wheel separation
+# = base_width + wheel_width = 0.2214 + 0.0246 = 0.246 (0.25 here).
+
+/<robot_name>/controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+/<robot_name>/joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: true
+
+/<robot_name>/diff_drive_controller:
+  ros__parameters:
+    use_sim_time: true
+    left_wheel_names:  ["left_wheel_joint"]
+    right_wheel_names: ["right_wheel_joint"]
+
+    wheel_separation: 0.25
+    wheel_radius: 0.045
+
+    publish_rate: 50.0
+    # Frame ids below already include the rendered robot namespace.
+    tf_frame_prefix_enable: false
+    odom_frame_id: <robot_name>/odom
+    base_frame_id: <robot_name>/base_footprint
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+
+    # Gazebo Harmonic's joint state feedback can lag or remain at zero even
+    # while velocity commands move the simulated model. Integrate commanded
+    # velocity so odom and RViz stay aligned with the moving entity.
+    open_loop: true
+    # ...but DO NOT publish the odom -> base_footprint transform from here.
+    # Open-loop integration drifts the moment the robot is blocked or slips,
+    # and Nav2 then projects its laser scans through that wrong pose: phantom
+    # obstacles appear in the costmap and the planner ends up reporting
+    # "no valid path found" while the robot sits in a perfectly open aisle.
+    # The bridge launch runs one ground-truth odom relay per robot, which owns
+    # this transform (and /<robot>/odom) instead.
+    enable_odom_tf: false
+
+    cmd_vel_timeout: 0.5
+
+    linear:
+      x:
+        has_velocity_limits: true
+        max_velocity: 0.70
+        min_velocity: -0.25
+        has_acceleration_limits: true
+        max_acceleration: 1.0
+        min_acceleration: -1.0
+    angular:
+      z:
+        has_velocity_limits: true
+        max_velocity: 1.5
+        min_velocity: -1.5
+        has_acceleration_limits: true
+        max_acceleration: 3.0
+        min_acceleration: -3.0

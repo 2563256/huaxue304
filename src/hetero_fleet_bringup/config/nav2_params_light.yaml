@@ -1,0 +1,424 @@
+# Nav2 parameters for the LIGHT differential AMR (0.344 x 0.271 m, 0.70 m/s).
+#
+# All three robot types share this file's structure; what differs is:
+#   - inflation_radius / cost_scaling_factor  (how much clearance it keeps)
+#   - max_vel_x / max_vel_theta               (how fast it is allowed to go)
+#   - whether lateral motion is allowed       (diff cannot strafe)
+#
+# The scene is a scanned office aisle (see MAP_SWAP.md), not a warehouse: the
+# drivable route is ~1.0-3.5 m wide, verified against maps/geomap.pgm by
+# tools/verify_scene.py. Clearance is (inscribed radius) + (inflation radius):
+#     light 0.135 + 0.17 = 0.305 m
+#     omni  0.176 + 0.21 = 0.386 m
+#     heavy 0.161 + 0.20 = 0.361 m
+# so the smallest robot still fits everywhere the heavy one does - the
+# difference between the types is now speed, payload and capability rather
+# than a hard aisle-width limit.
+#
+# CONSTRAINT: Nav2 refuses to activate planner_server when
+# inflation_radius < the footprint's inscribed radius, printing
+# "The configured inflation radius (X) is smaller than the computed inscribed
+# radius (Y)". All three types therefore use a rectangular footprint rather
+# than robot_radius: with a polygon Nav2 uses the true half-width (0.17 m here)
+# as the inscribed radius, so the 0.17 m inflation is legal. Setting
+# robot_radius instead would make Nav2 read the *circumscribed* 0.30 m as the
+# inscribed radius and refuse to start.
+#
+# The launch file rewrites <robot_name> to the concrete instance.
+
+# AMCL runs one filter per robot against the shared map. The frame ids MUST be
+# namespaced: the TF tree contains <robot_name>/odom and
+# <robot_name>/base_footprint, never bare odom / base_footprint. With the bare
+# defaults the message filter cannot transform a single scan, drops every one
+# of them with "discarding message because the queue is full", and
+# /<robot_name>/amcl_pose stays empty forever.
+# tf_broadcast stays false: map -> odom is owned by bridge.launch.py, and the
+# ground-truth odom relay owns odom -> base_footprint.
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    global_frame_id: map
+    odom_frame_id: <robot_name>/odom
+    base_frame_id: <robot_name>/base_footprint
+    scan_topic: scan          # remapped to /<robot_name>/scan_fixed by nav2.launch.py
+    tf_broadcast: false
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: map
+    robot_base_frame: <robot_name>/base_footprint
+    odom_topic: /<robot_name>/odom
+    bt_loop_duration: 10
+    # How long bt_navigator waits for an action server (the planner, the
+    # controller, the recovery behaviours) to acknowledge a goal. The Nav2
+    # default of 20 ms is measured in wall-clock time and this machine runs
+    # Gazebo plus four full Nav2 stacks, where gz sim server alone saturates a
+    # core. Under that load the planner occasionally fails to ACK inside 20 ms,
+    # bt_navigator aborts navigate_to_pose with status 6, and fleet_manager
+    # burns the task's single requeue before marking it FAILED permanently.
+    # 300 ms costs nothing when the server is healthy, because the wait ends as
+    # soon as the ACK arrives.
+    default_server_timeout: 300
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      # The collision monitor stops the base when another vehicle is about to
+      # touch it. With the stock 10 s allowance that safety stop looked exactly
+      # like a stuck robot: the progress checker aborted the goal, NavigateToPose
+      # returned ABORTED, and fleet_manager burned the task's single requeue -
+      # measured on a full mixed_20 run as t09 and t14 failing with
+      # "navigation to pickup failed" right after an omni_1 PolygonStop event.
+      # Waiting for traffic to clear is the behaviour we want, so the robot is
+      # given 30 s of no progress before it is considered stuck.
+      required_movement_radius: 0.2
+      movement_time_allowance: 30.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      stateful: true
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.15
+
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 2000
+      vx_std: 0.2
+      vy_std: 0.0            # differential drive: no lateral motion
+      wz_std: 0.4
+      vx_max: 0.70           # light AMR top speed (see robot_profiles.yaml)
+      vx_min: -0.25
+      vy_max: 0.0
+      wz_max: 1.5
+      iteration_count: 1
+      prune_distance: 1.2
+      transform_tolerance: 0.1
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      visualize: false
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      critics: ["ConstraintCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      ObstaclesCritic:
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 1.5
+        critical_weight: 20.0
+        consider_footprint: false
+        collision_cost: 10000.0
+        collision_margin_distance: 0.05
+        near_goal_distance: 0.5
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        mode: 0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      always_send_full_costmap: true
+      global_frame: <robot_name>/odom
+      robot_base_frame: <robot_name>/base_footprint
+      rolling_window: true
+      width: 4
+      height: 4
+      resolution: 0.05
+      # Rectangular 0.344 x 0.271 footprint; see the note at the top of this file.
+      footprint: "[[0.172, 0.135], [0.172, -0.135], [-0.172, -0.135], [-0.172, 0.135]]"
+      # 3 cm of padding on top of the true outline. Without it the costmap's
+      # lethal radius equals the physical contact distance, so a robot that
+      # brushes a wall sits inside its own lethal cell and MPPI finds no
+      # feasible rollout ("Optimizer fail to compute path") - measured as 42
+      # failures and a wedged fleet in one run. The padding is what restores
+      # the margin the old undersized footprint was accidentally providing.
+      footprint_padding: 0.06
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan robot_obstacles
+        scan:
+          topic: /<robot_name>/scan_fixed
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 10.0
+          obstacle_min_range: 0.0
+        # Where the OTHER vehicles are, synthesised by scan_frame_relay.py from
+        # their odometry - the lidars sit at different heights and cannot see
+        # each other (see that script). This source is LOCAL ONLY: the global
+        # costmap below deliberately listens to scan_fixed alone, because a
+        # parked vehicle in the planning grid makes a shared pickup zone
+        # unreachable ("no valid path found" for a 1.5 m move) and costs the
+        # task its single requeue.
+        robot_obstacles:
+          topic: /<robot_name>/robot_obstacles
+          max_obstacle_height: 2.0
+          # Mark only: the real lidar above clears, so a vehicle that drives
+          # away does not leave a permanent mark behind it.
+          clearing: false
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 10.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
+      always_reset_initial_costmap: false
+      # The local rolling window must NOT use unknown space. MPPI's obstacle
+      # critic treats NO_INFORMATION (255) as a blocking cell, so any part of
+      # the 4x4 m window the lidar has not cleared yet becomes a wall the robot
+      # refuses to drive into: it ends up boxed in and creeps at a few cm/s
+      # until the progress checker aborts the goal. The lidar covers the whole
+      # window (12 m range, 360 deg), so unobserved cells are free for planning
+      # purposes here. The global costmap keeps track_unknown_space: true - it
+      # is covered by the static map, which is fully known.
+      track_unknown_space: false
+      transform_tolerance: 0.5
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: <robot_name>/base_footprint
+      footprint: "[[0.172, 0.135], [0.172, -0.135], [-0.172, -0.135], [-0.172, 0.135]]"
+      # 3 cm of padding on top of the true outline. Without it the costmap's
+      # lethal radius equals the physical contact distance, so a robot that
+      # brushes a wall sits inside its own lethal cell and MPPI finds no
+      # feasible rollout ("Optimizer fail to compute path") - measured as 42
+      # failures and a wedged fleet in one run. The padding is what restores
+      # the margin the old undersized footprint was accidentally providing.
+      footprint_padding: 0.06
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /<robot_name>/scan_fixed
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 10.0
+          obstacle_min_range: 0.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
+      transform_tolerance: 0.5
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner::SmacPlanner2D"
+      tolerance: 0.125
+      downsample_costmap: false
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: true
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    local_frame: <robot_name>/odom
+    global_frame: map
+    robot_base_frame: <robot_name>/base_footprint
+    transform_tolerance: 0.1
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.5
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 2.4
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: true
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.70, 0.0, 1.5]    # [vx, vy, wz] - no lateral for diff drive
+    min_velocity: [-0.25, 0.0, -1.5]
+    max_accel: [1.0, 0.0, 3.0]
+    max_decel: [-1.0, 0.0, -3.0]
+    odom_topic: /<robot_name>/odom
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
+collision_monitor:
+  ros__parameters:
+    use_sim_time: true
+    base_frame_id: <robot_name>/base_footprint
+    odom_frame_id: <robot_name>/odom
+    # RELATIVE on purpose. The node runs inside /<robot_name>, so these resolve
+    # to /<robot_name>/cmd_vel_smoothed and /<robot_name>/cmd_vel. The old
+    # "<robot_name>/cmd_vel_smoothed" form resolved to
+    # /<robot_name>/<robot_name>/cmd_vel_smoothed, i.e. a topic nobody
+    # publishes or reads.
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel"
+    transform_tolerance: 0.2
+    source_timeout: 5.0
+    stop_pub_timeout: 2.0
+    # Slowdown first, stop second. Each robot is stopped or slowed as soon as
+    # another vehicle (or anything else) enters these boxes around it, so two
+    # robots converging stop short of contact instead of trading paint.
+    polygons: ["PolygonSlow", "PolygonStop"]
+    PolygonSlow:
+      type: "polygon"
+      # Sized for TRAFFIC, not for walls. On the previous map (a 1.1 m wide
+      # ring corridor) this had to be tiny, because a wall sat inside the cone
+      # at every bend and throttled the fleet permanently. The current map is a
+      # 26 x 10 m open hall with 1.3 m+ clearance everywhere the robots work, so
+      # the polygon can be big enough to actually matter: 0.60 m ahead leaves
+      # ~0.35 m of braking margin at 0.70 m/s, and 0.40 m to each side keeps two
+      # robots from trading paint when they converge on a shared zone.
+      points: "[[0.90, 0.60], [0.90, -0.60], [-0.30, -0.60], [-0.30, 0.60]]"
+      action_type: "slowdown"
+      min_points: 3
+      slowdown_ratio: 0.4
+      visualize: true
+      polygon_pub_topic: "polygon_slowdown"
+    PolygonStop:
+      type: "polygon"
+      # ~0.15 m outside the 0.344 x 0.271 footprint: close enough that normal
+      # avoidance still happens in the costmap, far enough that a teammate
+      # moving towards this robot is braked BEFORE contact. With the old
+      # body-sized polygon they touched, and a nose-to-tail push shoved one
+      # robot into a 0.21 m pocket where its own costmap called the cell
+      # occupied - every subsequent goal then failed with "Start occupied".
+      points: "[[0.30, 0.22], [0.30, -0.22], [-0.22, -0.22], [-0.22, 0.22]]"
+      action_type: "stop"
+      min_points: 4
+      visualize: true
+      polygon_pub_topic: "polygon_stop"
+    # TEAMMATES ONLY - deliberately NOT the lidar.
+    #
+    # This monitor used to watch `scan` as well, which includes the walls. On
+    # a corridor this narrow that means the slow polygon is permanently
+    # occupied: the walls sit inside +/-0.60 m at almost every point of the
+    # ring, so slowdown_ratio was applied continuously and the whole fleet
+    # crawled. Measured with tools/drive_trace.py on light_1 running a 9.2 m
+    # leg: cmd_vel_smoothed median 0.207 m/s, cmd_vel (i.e. after this node)
+    # median 0.083 m/s - exactly the 0.4 ratio, applied for the whole leg.
+    #
+    # Walls do not need this safety net: they are static and known, the local
+    # costmap marks them, MPPI's ObstaclesCritic refuses lethal cells, and the
+    # global planner checks the true footprint. What the costmap CANNOT see is
+    # the other vehicles - this robot's lidar is blind to them by design (see
+    # scan_frame_relay) - and that is exactly what `robot_obstacles` carries.
+    # Keeping the monitor on that one source leaves it as the last line of
+    # defence against a teammate without throttling the fleet everywhere.
+    observation_sources: ["robot_obstacles"]
+    scan:
+      type: "scan"
+      topic: /<robot_name>/scan_fixed
+    # Same synthesised source the local costmap uses, so the emergency stop
+    # also reacts to vehicles this robot's lidar is physically blind to.
+    robot_obstacles:
+      type: "scan"
+      topic: /<robot_name>/robot_obstacles

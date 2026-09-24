@@ -1,0 +1,116 @@
+# Ten-task demo scenario for the scanned office map (geomap_colour_noroof).
+#
+# Deliberately mixed so the greedy scheduler has real decisions to make:
+#   - light tasks (<= 20 kg)        -> only light_1 qualifies
+#   - heavy pallet tasks (up to 150)-> only heavy_1 qualifies
+#   - mid-weight tasks              -> light_1 is barred by payload, so these
+#                                     fall to heavy_1 or omni_1
+#   - one impossible task           -> exercises the FAILED / REQUEUED path,
+#                                     which is why it is here on purpose
+#
+# Coordinates match the zone markers in geomap_fleet.sdf. Every one of them is
+# a cell that tools/verify_scene.py proved free, clear enough for the whole
+# fleet, clear of the fleet's status labels, and connected to all the others.
+# The map's drivable area is one ring corridor:
+#   pickup   A(10.60,-0.43)  B(  1.70,  4.22)  C(  9.10,  4.22)
+#   dropoff  A( 8.10,-0.43)  B(  5.40,  4.22)  C( 11.00,  4.22)
+#   charger  A(-4.30,-0.20)  B(-3.00, 0.40)  C(-1.70,-0.30)  D(-0.30, 0.10)
+# The chargers are the west arm (the map's dead-end spur); every robot spawns
+# on its own bay and drives back to it after each task.
+
+tasks:
+  # --- light parcels: only light_1 can carry them ------------------------
+  - id: task_001
+    type: transport
+    pickup: [10.60, -0.43, 0.0]
+    dropoff: [ 8.10, -0.43, 0.0]
+    payload_kg: 8.0
+    required_capability: light_payload
+    priority: 2
+    deadline_sec: 300.0
+
+  - id: task_002
+    type: transport
+    pickup: [ 1.70,  4.22, 0.0]
+    dropoff: [ 8.10, -0.43, 0.0]
+    payload_kg: 12.0
+    required_capability: light_payload
+    priority: 1
+    deadline_sec: 300.0
+
+  - id: task_003
+    type: transport
+    pickup: [ 9.10,  4.22, 0.0]
+    dropoff: [ 8.10, -0.43, 0.0]
+    payload_kg: 5.0
+    required_capability: light_payload
+    priority: 3
+    deadline_sec: 240.0
+
+  # --- heavy pallets: only the heavy AMR ---------------------------------
+  - id: task_004
+    type: transport
+    pickup: [10.60, -0.43, 0.0]
+    dropoff: [ 5.40,  4.22, 0.0]
+    payload_kg: 120.0
+    required_capability: heavy_payload
+    priority: 4
+    deadline_sec: 420.0
+
+  # The long one: down the whole aisle and back out again.
+  - id: task_005
+    type: transport
+    pickup: [ 1.70,  4.22, 0.0]
+    dropoff: [ 5.40,  4.22, 0.0]
+    payload_kg: 95.0
+    required_capability: heavy_payload
+    priority: 2
+    deadline_sec: 420.0
+
+  # --- mid-weight, open to heavy_1 or omni_1 -----------------------------
+  - id: task_006
+    type: transport
+    pickup: [ 9.10,  4.22, 0.0]
+    dropoff: [ 5.40,  4.22, 0.0]
+    payload_kg: 33.0
+    required_capability: ""
+    priority: 3
+    deadline_sec: 360.0
+
+  - id: task_007
+    type: transport
+    pickup: [10.60, -0.43, 0.0]
+    dropoff: [11.00,  4.22, 0.0]
+    payload_kg: 27.0
+    required_capability: ""
+    priority: 1
+    deadline_sec: 360.0
+
+  # --- tight deadlines: the scheduler has to prioritise ------------------
+  - id: task_008
+    type: transport
+    pickup: [ 1.70,  4.22, 0.0]
+    dropoff: [11.00,  4.22, 0.0]
+    payload_kg: 9.0
+    required_capability: ""
+    priority: 5
+    deadline_sec: 60.0
+
+  - id: task_009
+    type: transport
+    pickup: [ 9.10,  4.22, 0.0]
+    dropoff: [11.00,  4.22, 0.0]
+    payload_kg: 18.0
+    required_capability: light_payload
+    priority: 2
+    deadline_sec: 300.0
+
+  # --- deliberately impossible: 200 kg, above the 150 kg heavy rating ----
+  - id: task_010
+    type: transport
+    pickup: [10.60, -0.43, 0.0]
+    dropoff: [ 8.10, -0.43, 0.0]
+    payload_kg: 200.0
+    required_capability: heavy_payload
+    priority: 1
+    deadline_sec: 600.0

@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<!--
+  Shared xacro macros for the heterogeneous fleet.
+
+  Everything that is identical (or nearly so) across the three robots lives
+  here so the per-robot files only carry what actually differs: geometry,
+  inertia, wheel layout and kinematic parameters.
+
+  The models are driven by gz_ros2_control inside Gazebo:
+    - joint_state_broadcaster  publishes /<ns>/joint_states
+    - diff_drive_controller    subscribes /<ns>/cmd_vel, publishes /<ns>/odom
+    - mecanum_drive_controller same, but with omnidirectional kinematics
+  Nav2 therefore only ever talks cmd_vel + odom to the controller; it never
+  knows Gazebo exists.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!--
+    Gazebo material override. Gazebo ignores URDF <material> colours, so any
+    link we want tinted needs its own <gazebo reference>. We keep the colours
+    distinct per robot so the three vehicles are easy to tell apart in the GUI.
+  -->
+  <xacro:macro name="fleet_gazebo_material" params="link rgba">
+    <gazebo reference="${link}">
+      <material>
+        <ambient>${rgba}</ambient>
+        <diffuse>${rgba}</diffuse>
+        <specular>${rgba}</specular>
+      </material>
+    </gazebo>
+  </xacro:macro>
+
+  <!--
+    Physics tuning shared by all three bases: friction is raised so the wheels
+    do not slip when the heavy AMR carries a 150 kg pallet, and the caster is
+    made near-frictionless so it does not fight the differential steering.
+  -->
+  <xacro:macro name="fleet_gazebo_wheel_dynamics" params="link mu1 mu2 kp kd fdir1:=''">
+    <gazebo reference="${link}">
+      <mu1>${mu1}</mu1>
+      <mu2>${mu2}</mu2>
+      <kp>${kp}</kp>
+      <kd>${kd}</kd>
+      <!-- One contact per wheel: a cylinder resting on a plane otherwise
+           generates a whole line of contacts, and Bullet's solver splits the
+           available friction impulse between them. The measured symptom of
+           getting this wrong is a robot whose wheels counter-rotate correctly
+           (joint states +-1.64 rad/s for a 0.6 rad/s command) while the body
+           neither yaws nor slides: the rolling contact still carries the robot
+           forward, but the yaw moment never builds up. -->
+      <maxContacts>1</maxContacts>
+      <!-- mu1/mu2 are the friction along two contact tangents, and which
+           tangent is which is engine-defined unless fdir1 pins the first one.
+           Mecanum wheels rely on that: high friction along the rolling
+           direction, almost none sideways. Without fdir1 the low lateral mu2
+           does not land where it is needed and the robot can neither strafe
+           nor spin in place - it just slides forward whatever it is told. -->
+      <xacro:if value="${fdir1 != ''}">
+        <fdir1>${fdir1}</fdir1>
+      </xacro:if>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- A single velocity-controlled joint for the gz_ros2_control system. -->
+  <xacro:macro name="fleet_ctrl_joint" params="j">
+    <joint name="${j}">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <!--
+    Two DIFFERENT plugin names are involved here, and mixing them up produces
+    "Failed to load system plugin: library does not contain requested plugin":
+
+      * <hardware><plugin> is the ros2_control HARDWARE component, resolved by
+        pluginlib inside the Gazebo system plugin. That is
+        gz_ros2_control/GazeboSimSystem, registered by libgz_hardware_plugins.so
+        via gz_hardware_plugins.xml.
+
+      * <gazebo><plugin name=...> is the GAZEBO SYSTEM plugin, loaded by
+        Gazebo's own system loader straight from libgz_ros2_control-system.so.
+        Its name must be the C++ class GzPluginHook exports, which is
+        gz_ros2_control::GazeboSimROS2ControlPlugin - NOT GazeboSimSystem.
+
+    The `filename` is the bare library name without the "lib" prefix or ".so".
+
+    The controller YAML is supplied by the launch file as an absolute path via
+    the "controllers_file" argument, because a relative path here would be
+    resolved against the install space and silently fail.
+  -->
+  <xacro:macro name="fleet_ros2_control"
+               params="name wheel_joints controller_type controllers_file namespace">
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+      <xacro:if value="${controller_type == 'diff'}">
+        <xacro:fleet_ctrl_joint j="${wheel_joints[0]}"/>
+        <xacro:fleet_ctrl_joint j="${wheel_joints[1]}"/>
+      </xacro:if>
+      <xacro:if value="${controller_type == 'mecanum'}">
+        <xacro:fleet_ctrl_joint j="${wheel_joints[0]}"/>
+        <xacro:fleet_ctrl_joint j="${wheel_joints[1]}"/>
+        <xacro:fleet_ctrl_joint j="${wheel_joints[2]}"/>
+        <xacro:fleet_ctrl_joint j="${wheel_joints[3]}"/>
+      </xacro:if>
+    </ros2_control>
+
+    <gazebo>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>${controllers_file}</parameters>
+        <controller_manager_name>controller_manager</controller_manager_name>
+        <update_rate>100</update_rate>
+        <ros>
+          <namespace>/${namespace}</namespace>
+        </ros>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+
+</robot>

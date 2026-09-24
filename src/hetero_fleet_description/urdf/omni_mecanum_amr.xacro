@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<!-- Mecanum AMR for precise lateral docking.
+
+     SCALE: the warehouse design times `s`, which is 0.42 here. The code is the
+     source of truth: s=0.42 gives a 0.378 x 0.294 m body (0.403 x 0.353 m
+     including the bumper, wheels included), and the controller geometry in
+     omni_mecanum_amr_controllers.yaml (wheels_radius 0.0399, wheel joints at
+     x = +/-0.147, y = +/-0.1617) was derived from exactly that. It started at
+     0.61 and has been shrunk twice since (0.49, now 0.42); see the note in
+     light_diff_amr.xacro. Masses scale as s^3, inertias as s^5, the shell
+     mesh by s. The mecanum friction model - which is what makes this robot the
+     only one that can strafe - is unchanged; only its dimensions move.
+
+     The navigation footprint in robot_profiles.yaml (0.403 x 0.353 m) is
+     this same outline, measured by tools/measure_footprint.py.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="omni_mecanum_amr">
+  <xacro:arg name="robot_name" default="omni_1"/>
+  <xacro:arg name="controllers_file" default=""/>
+  <xacro:include filename="$(find hetero_fleet_description)/urdf/common.xacro"/>
+  <xacro:property name="controllers_file" value="$(arg controllers_file)"/>
+  <xacro:property name="robot_name" value="$(arg robot_name)"/>
+  <xacro:property name="s" value="0.42"/>
+  <xacro:property name="base_length" value="${0.90 * s}"/>
+  <xacro:property name="base_width" value="${0.70 * s}"/>
+  <xacro:property name="base_height" value="${0.24 * s}"/>
+  <xacro:property name="wheel_radius" value="${0.095 * s}"/>
+  <xacro:property name="wheel_width" value="${0.070 * s}"/>
+  <link name="base_footprint"/>
+  <link name="base_link">
+    <inertial><mass value="${42.0 * s**3}"/><inertia ixx="${1.75 * s**5}" ixy="0" ixz="0" iyy="${2.25 * s**5}" iyz="0" izz="${3.10 * s**5}"/></inertial>
+    <visual><origin xyz="0 0 0"/><geometry><mesh filename="package://hetero_fleet_description/meshes/omni_shell.stl" scale="${s} ${s} ${s}"/></geometry><material name="red"><color rgba="0.78 0.10 0.12 1"/></material></visual>
+    <collision><origin xyz="0 0 ${base_height / 2}"/><geometry><box size="${base_length} ${base_width} ${base_height}"/></geometry></collision>
+  </link>
+  <joint name="base_footprint_joint" type="fixed"><parent link="base_footprint"/><child link="base_link"/><origin xyz="0 0 ${wheel_radius}"/></joint>
+  <link name="underbody_link"><visual><origin xyz="0 0 ${0.06 * s}"/><geometry><box size="${0.82 * s} ${0.62 * s} ${0.12 * s}"/></geometry><material name="underbody"><color rgba="0.14 0.15 0.16 1"/></material></visual><collision><origin xyz="0 0 ${0.06 * s}"/><geometry><box size="${0.82 * s} ${0.62 * s} ${0.12 * s}"/></geometry></collision></link>
+  <joint name="underbody_joint" type="fixed"><parent link="base_link"/><child link="underbody_link"/><origin xyz="0 0 ${0.01 * s}"/></joint>
+  <link name="omni_bumper_link"><visual><origin xyz="0 0 ${0.045 * s}"/><geometry><box size="${0.96 * s} ${0.76 * s} ${0.09 * s}"/></geometry><material name="bumper"><color rgba="0.10 0.11 0.13 1"/></material></visual><collision><origin xyz="0 0 ${0.045 * s}"/><geometry><box size="${0.96 * s} ${0.76 * s} ${0.09 * s}"/></geometry></collision></link>
+  <joint name="omni_bumper_joint" type="fixed"><parent link="base_link"/><child link="omni_bumper_link"/><origin xyz="0 0 ${0.03 * s}"/></joint>
+  <link name="omni_deck_link"><visual><origin xyz="0 0 ${0.035 * s}"/><geometry><box size="${0.72 * s} ${0.54 * s} ${0.08 * s}"/></geometry><material name="deck"><color rgba="0.68 0.12 0.12 1"/></material></visual><collision><origin xyz="0 0 ${0.035 * s}"/><geometry><box size="${0.72 * s} ${0.54 * s} ${0.08 * s}"/></geometry></collision></link>
+  <joint name="omni_deck_joint" type="fixed"><parent link="base_link"/><child link="omni_deck_link"/><origin xyz="0 0 ${base_height}"/></joint>
+
+  <link name="front_left_corner_guard"><visual><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry><material name="guard"><color rgba="0.08 0.09 0.10 1"/></material></visual><collision><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry></collision></link>
+  <joint name="front_left_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="front_left_corner_guard"/><origin xyz="${0.39 * s} ${0.29 * s} 0"/></joint>
+  <link name="front_right_corner_guard"><visual><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry><material name="guard"><color rgba="0.08 0.09 0.10 1"/></material></visual><collision><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry></collision></link>
+  <joint name="front_right_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="front_right_corner_guard"/><origin xyz="${0.39 * s} ${-0.29 * s} 0"/></joint>
+  <link name="rear_left_corner_guard"><visual><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry><material name="guard"><color rgba="0.08 0.09 0.10 1"/></material></visual><collision><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry></collision></link>
+  <joint name="rear_left_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="rear_left_corner_guard"/><origin xyz="${-0.39 * s} ${0.29 * s} 0"/></joint>
+  <link name="rear_right_corner_guard"><visual><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry><material name="guard"><color rgba="0.08 0.09 0.10 1"/></material></visual><collision><origin xyz="0 0 ${0.12 * s}"/><geometry><cylinder radius="${0.05 * s}" length="${0.24 * s}"/></geometry></collision></link>
+  <joint name="rear_right_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="rear_right_corner_guard"/><origin xyz="${-0.39 * s} ${-0.29 * s} 0"/></joint>
+
+  <xacro:macro name="mecanum_wheel" params="name x y">
+    <link name="${name}_wheel_link">
+      <inertial><mass value="${0.65 * s**3}"/><inertia ixx="${0.004 * s**5}" ixy="0" ixz="0" iyy="${0.002 * s**5}" iyz="0" izz="${0.004 * s**5}"/></inertial>
+      <visual><origin rpy="${pi / 2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry><material name="rubber"><color rgba="0.04 0.04 0.04 1"/></material></visual>
+      <!-- Keep this a cylinder, matching the visual. Replacing it with a
+           sphere was tried and is distinctly worse: with a point contact the
+           45 degree roller direction has nothing to push against and the
+           mecanum coupling disappears entirely - every command, strafe and
+           spin included, came out as straight-line +x motion. -->
+      <collision><origin rpy="${pi / 2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
+    </link>
+    <joint name="${name}_wheel_joint" type="continuous"><parent link="base_link"/><child link="${name}_wheel_link"/><origin xyz="${x} ${y} 0"/><axis xyz="0 1 0"/><limit effort="15" velocity="18"/></joint>
+  </xacro:macro>
+  <xacro:mecanum_wheel name="front_left" x="${base_length / 2 - 0.10 * s}" y="${base_width / 2 + wheel_width / 2}"/>
+  <xacro:mecanum_wheel name="front_right" x="${base_length / 2 - 0.10 * s}" y="${-base_width / 2 - wheel_width / 2}"/>
+  <xacro:mecanum_wheel name="rear_left" x="${-base_length / 2 + 0.10 * s}" y="${base_width / 2 + wheel_width / 2}"/>
+  <xacro:mecanum_wheel name="rear_right" x="${-base_length / 2 + 0.10 * s}" y="${-base_width / 2 - wheel_width / 2}"/>
+
+  <link name="lidar_link">
+    <inertial><mass value="0.15"/><inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0003"/></inertial>
+    <visual><geometry><cylinder radius="${0.048 * s}" length="${0.05 * s}"/></geometry><material name="lidar"><color rgba="0.12 0.12 0.14 1"/></material></visual><collision><geometry><cylinder radius="${0.048 * s}" length="${0.05 * s}"/></geometry></collision>
+  </link>
+  <link name="lidar_mount_link"><visual><origin xyz="0 0 ${0.08 * s}"/><geometry><cylinder radius="${0.072 * s}" length="${0.16 * s}"/></geometry><material name="mount"><color rgba="0.14 0.15 0.17 1"/></material></visual><collision><origin xyz="0 0 ${0.08 * s}"/><geometry><cylinder radius="${0.065 * s}" length="${0.14 * s}"/></geometry></collision></link>
+  <joint name="lidar_mount_joint" type="fixed"><parent link="omni_deck_link"/><child link="lidar_mount_link"/><origin xyz="${0.18 * s} 0 ${0.07 * s}"/></joint>
+  <joint name="lidar_joint" type="fixed"><parent link="lidar_mount_link"/><child link="lidar_link"/><origin xyz="0 0 ${0.14 * s}"/></joint>
+  <!-- Lidar height lands at ~0.29 m, inside the map's obstacle band of
+       maps/geomap.pgm, so scan and map agree about what is in the way. -->
+  <gazebo reference="lidar_link"><sensor name="${robot_name}_lidar" type="gpu_lidar"><always_on>1</always_on><visualize>false</visualize><update_rate>20</update_rate><topic>/${robot_name}/scan</topic><frame_id>lidar_link</frame_id><lidar><scan><horizontal><samples>1080</samples><resolution>1</resolution><min_angle>-3.14159</min_angle><max_angle>3.14159</max_angle></horizontal></scan><range><min>0.10</min><max>15.0</max><resolution>0.01</resolution></range></lidar></sensor></gazebo>
+  <xacro:fleet_gazebo_material link="base_link" rgba="0.78 0.10 0.12 1"/>
+  <!-- Mecanum wheels, modelled the way the rollers actually work.
+       Each roller spins freely about its own axis, and those axes lie at 45
+       degrees to the wheel plane - mirrored between the left and right sides.
+       So the *free sliding* direction is that 45 degree diagonal: fdir1 is
+       aligned with it and carries the low coefficient (mu1), while the
+       perpendicular diagonal grips (mu2). Getting this wrong (or leaving
+       fdir1 unset, when the engine picks the tangent directions itself) turns
+       the robot into something that can only ever slide forward: it cannot
+       strafe and it cannot even spin in place. -->
+  <!-- fdir1 lives in the *collision* frame, and the wheel collision is the
+       cylinder rotated by rpy = (+90, 0, 0): collision x is body x, but
+       collision z is body -y. The body-horizontal 45 degree diagonals
+       (1, +-1, 0)_body therefore read (1, 0, -+1) here. -->
+  <!-- Roller orientation. The left pair and the right pair carry opposite
+       diagonals; that mirroring is what lets a mecanum base strafe.
+
+       WHICH diagonal belongs on which side is not cosmetic, and the answer
+       here comes from measuring all three axes with tools/omni_probe.py
+       (twist published straight to the controller's reference topic, ground
+       truth read back from the odometry relay):
+
+         handedness        vx     wz                vy
+         left -1 right +1  1.00   -1.71  (INVERTED)  -0.14
+         left +1 right -1  0.98   +0.87 .. +0.97    -0.66 .. -1.30   <- this one
+
+       The previous revision used the first row. It looked fine because only
+       vx and the lateral magnitude were ever checked - but the plant turned
+       the OPPOSITE way to the command, at 1.7x the rate, so MPPI's
+       (DiffDrive) roll-outs predicted a turn the base never made: the
+       controller chased its own feedback, the robot snaked, and it could not
+       settle closer than ~0.35 m to a goal - which on a full run showed up as
+       omni_1 stalling 13 times where the other robots stalled 2-4, and as the
+       "navigation is a bit off" symptom on the vehicle.
+
+       The lateral sign is still mirrored: a +vy command moves the base -y,
+       which is why cmd_vel_stamper negates linear.y for this robot
+       (mirror_y). Both handednesses have that property, so mirror_y does not
+       depend on this choice. -->
+
+       mu1 runs along fdir1 and is the direction the rollers spin freely, so
+       it is kept deliberately small; mu2 grips across it and carries the
+       thrust, including the whole of a strafe. Tuning both was tried (0.02 /
+       1.0 -> 0.01 / 2.0) and changed the strafe response by under 1%, so the
+       original values are kept - the shortfall is not a friction tuning
+       problem. -->
+  <xacro:fleet_gazebo_wheel_dynamics link="front_left_wheel_link"  mu1="0.02" mu2="1.0" kp="100000" kd="1.0" fdir1="1 0 1"/>
+  <xacro:fleet_gazebo_wheel_dynamics link="rear_left_wheel_link"   mu1="0.02" mu2="1.0" kp="100000" kd="1.0" fdir1="1 0 1"/>
+  <xacro:fleet_gazebo_wheel_dynamics link="front_right_wheel_link" mu1="0.02" mu2="1.0" kp="100000" kd="1.0" fdir1="1 0 -1"/>
+  <xacro:fleet_gazebo_wheel_dynamics link="rear_right_wheel_link"  mu1="0.02" mu2="1.0" kp="100000" kd="1.0" fdir1="1 0 -1"/>
+  <xacro:fleet_ros2_control name="${robot_name}" wheel_joints="${['front_left_wheel_joint', 'front_right_wheel_joint', 'rear_left_wheel_joint', 'rear_right_wheel_joint']}" controller_type="mecanum" controllers_file="${controllers_file}" namespace="${robot_name}"/>
+</robot>

@@ -1,0 +1,24 @@
+# Dispatch one task to one robot. fleet_manager acts as the client: it picks a
+# robot with the greedy cost function and sends this goal to that robot's
+# NavigateToPose-driven task server.
+# NOTE: an action file needs exactly two three-dash separators. Never put one
+# inside a comment, or the rosidl parser counts it as a real section split.
+
+# goal
+Task task
+
+---
+
+# result
+bool     success
+string   robot_id
+float32  completion_time_sec      # wall/sim time from goal accept to COMPLETED
+float32  energy_wh                # energy consumed while executing
+string   message                  # human readable outcome / failure reason
+
+---
+
+# feedback
+string               phase        # PENDING|ASSIGNED|TO_PICKUP|LOADING|TO_DROPOFF
+geometry_msgs/Pose2D current_pose
+float32              progress     # 0.0 .. 1.0

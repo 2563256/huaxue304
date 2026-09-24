@@ -1,0 +1,13 @@
+# Ensures every package in this workspace is configured against the *system*
+# Python 3.12 that ROS 2 Jazzy was built for.
+#
+# Why this file exists: this machine has a conda environment ("condaecho") whose
+# python3.14 shadows /usr/bin/python3 on PATH. CMake's FindPython3 prefers
+# $CONDA_PREFIX, so it picks the conda interpreter, which does not have the
+# `empy` module that rosidl needs to generate interfaces. Pinning the
+# interpreter here makes `colcon build` work without any manual flags.
+{
+  "build": {
+    "cmake-args": ["-DPython3_EXECUTABLE=/usr/bin/python3"]
+  }
+}

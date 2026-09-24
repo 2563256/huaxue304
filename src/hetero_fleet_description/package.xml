@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>hetero_fleet_description</name>
+  <version>0.1.0</version>
+  <description>URDF/xacro models and capability profiles for the three heterogeneous AMRs.</description>
+  <maintainer email="dev@example.com">fleet dev</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>diff_drive_controller</exec_depend>
+  <exec_depend>mecanum_drive_controller</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <!-- The robots' shell meshes are referenced from the xacro as
+         package://hetero_fleet_description/meshes/*.stl. Gazebo resolves that
+         as model://hetero_fleet_description/..., so the *share* directory
+         (one level above this package) has to be on GZ_SIM_RESOURCE_PATH.
+         Exporting it here is the mechanism ros_gz_sim actually honours; see
+         the note in hetero_fleet_gz/package.xml. -->
+    <gazebo_ros gazebo_model_path="${prefix}/.."/>
+  </export>
+</package>

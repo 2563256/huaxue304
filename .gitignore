@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# colcon build/install/log trees. No leading slash, so these also cover the
+# stray copies that appear under src/ when colcon is run from the wrong place.
+build/
+install/
+log/
+
+# Per-run experiment output (fleet_manager) and rendered configs (launch).
+metrics/
+generated/

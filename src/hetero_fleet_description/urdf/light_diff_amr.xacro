@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<!-- Lightweight differential-drive AMR, sized for the scanned office map.
+
+     SCALE: every dimension below is the warehouse design multiplied by `s`,
+     which is 0.60 here - NOT the 0.70 that MAP_SWAP.md's table still quotes.
+     The code is the source of truth: s=0.41 gives a 0.328 x 0.221 m body
+     (0.344 x 0.271 m including the bumper, wheels included), which is what
+     the controller geometry (wheel_radius 0.0451 / separation 0.246) and
+     tools/measure_footprint.py report. It started at 0.60 and has been
+     shrunk twice since (0.48, now 0.41): the ring corridor's narrowest
+     usable passage is ~1.1 m and every centimetre of robot width is
+     lateral room the controller gets to work with (see MAP_SWAP.md 3). Masses scale with volume (s^3)
+     and inertias with s^5, so the dynamics stay self-consistent; the shell
+     mesh is scaled by the same factor so the visuals match the collision
+     geometry.
+
+     The navigation footprint in robot_profiles.yaml (0.344 x 0.271 m) is
+     this same outline, measured by tools/measure_footprint.py.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="light_diff_amr">
+  <xacro:arg name="robot_name" default="light_1"/>
+  <xacro:arg name="controllers_file" default=""/>
+  <xacro:include filename="$(find hetero_fleet_description)/urdf/common.xacro"/>
+  <xacro:property name="controllers_file" value="$(arg controllers_file)"/>
+  <xacro:property name="robot_name" value="$(arg robot_name)"/>
+  <xacro:property name="s" value="0.41"/>
+  <xacro:property name="base_length" value="${0.80 * s}"/>
+  <xacro:property name="base_width" value="${0.54 * s}"/>
+  <xacro:property name="base_height" value="${0.22 * s}"/>
+  <xacro:property name="wheel_radius" value="${0.11 * s}"/>
+  <xacro:property name="wheel_width" value="${0.060 * s}"/>
+
+  <link name="base_footprint"/>
+  <link name="base_link">
+    <!-- The centre of mass sits 6 cm (scaled) BEHIND the drive axle on
+         purpose. The wheels are at x = 0 and the single caster is behind, so
+         the support triangle only spans x in [-0.28s, 0]: a CoM on (or in
+         front of) the axle line is outside it. The robot then tips forward
+         onto its front corner guards, permanently pitched - which tilts the
+         lidar into the floor and makes the scan stop matching the map.
+         Putting the mass behind the axle (as a real AMR's battery pack does)
+         keeps the CoM inside the triangle, keeps the body level and keeps the
+         drive wheels loaded. -->
+    <inertial><origin xyz="${-0.06 * s} 0 0"/><mass value="${24.0 * s**3}"/><inertia ixx="${0.58 * s**5}" ixy="0" ixz="0" iyy="${0.92 * s**5}" iyz="0" izz="${1.20 * s**5}"/></inertial>
+    <visual><origin xyz="0 0 0"/><geometry><mesh filename="package://hetero_fleet_description/meshes/light_shell.stl" scale="${s} ${s} ${s}"/></geometry><material name="yellow"><color rgba="0.95 0.65 0.05 1"/></material></visual>
+    <collision><origin xyz="0 0 ${base_height / 2}"/><geometry><box size="${base_length} ${base_width} ${base_height}"/></geometry></collision>
+  </link>
+  <joint name="base_footprint_joint" type="fixed"><parent link="base_footprint"/><child link="base_link"/><origin xyz="0 0 ${wheel_radius}"/></joint>
+  <link name="underbody_link"><visual><origin xyz="0 0 ${0.055 * s}"/><geometry><box size="${0.72 * s} ${0.46 * s} ${0.11 * s}"/></geometry><material name="underbody"><color rgba="0.16 0.17 0.18 1"/></material></visual><collision><origin xyz="0 0 ${0.055 * s}"/><geometry><box size="${0.72 * s} ${0.46 * s} ${0.11 * s}"/></geometry></collision></link>
+  <joint name="underbody_joint" type="fixed"><parent link="base_link"/><child link="underbody_link"/><origin xyz="0 0 ${0.01 * s}"/></joint>
+  <link name="bumper_link"><visual><origin xyz="0 0 ${0.04 * s}"/><geometry><box size="${0.84 * s} ${0.58 * s} ${0.08 * s}"/></geometry><material name="bumper"><color rgba="0.12 0.14 0.16 1"/></material></visual><collision><origin xyz="0 0 ${0.04 * s}"/><geometry><box size="${0.84 * s} ${0.58 * s} ${0.08 * s}"/></geometry></collision></link>
+  <joint name="bumper_joint" type="fixed"><parent link="base_link"/><child link="bumper_link"/><origin xyz="0 0 ${0.02 * s}"/></joint>
+  <link name="top_cover_link"><visual><origin xyz="0 0 ${0.04 * s}"/><geometry><box size="${0.66 * s} ${0.44 * s} ${0.08 * s}"/></geometry><material name="top_cover"><color rgba="0.72 0.45 0.03 1"/></material></visual><collision><origin xyz="0 0 ${0.04 * s}"/><geometry><box size="${0.66 * s} ${0.44 * s} ${0.08 * s}"/></geometry></collision></link>
+  <joint name="top_cover_joint" type="fixed"><parent link="base_link"/><child link="top_cover_link"/><origin xyz="${-0.02 * s} 0 ${base_height}"/></joint>
+
+  <link name="front_left_corner_guard"><visual><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry><material name="guard"><color rgba="0.10 0.11 0.12 1"/></material></visual><collision><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry></collision></link>
+  <joint name="front_left_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="front_left_corner_guard"/><origin xyz="${0.34 * s} ${0.22 * s} 0"/></joint>
+  <link name="front_right_corner_guard"><visual><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry><material name="guard"><color rgba="0.10 0.11 0.12 1"/></material></visual><collision><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry></collision></link>
+  <joint name="front_right_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="front_right_corner_guard"/><origin xyz="${0.34 * s} ${-0.22 * s} 0"/></joint>
+  <link name="rear_left_corner_guard"><visual><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry><material name="guard"><color rgba="0.10 0.11 0.12 1"/></material></visual><collision><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry></collision></link>
+  <joint name="rear_left_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="rear_left_corner_guard"/><origin xyz="${-0.34 * s} ${0.22 * s} 0"/></joint>
+  <link name="rear_right_corner_guard"><visual><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry><material name="guard"><color rgba="0.10 0.11 0.12 1"/></material></visual><collision><origin xyz="0 0 ${0.10 * s}"/><geometry><cylinder radius="${0.045 * s}" length="${0.20 * s}"/></geometry></collision></link>
+  <joint name="rear_right_corner_guard_joint" type="fixed"><parent link="base_link"/><child link="rear_right_corner_guard"/><origin xyz="${-0.34 * s} ${-0.22 * s} 0"/></joint>
+
+  <link name="caster_fork_link"><visual><origin xyz="0 0 ${0.08 * s}"/><geometry><box size="${0.07 * s} ${0.06 * s} ${0.16 * s}"/></geometry><material name="fork"><color rgba="0.18 0.19 0.20 1"/></material></visual><collision><origin xyz="0 0 ${0.08 * s}"/><geometry><box size="${0.07 * s} ${0.06 * s} ${0.16 * s}"/></geometry></collision></link>
+  <joint name="caster_fork_joint" type="fixed"><parent link="base_link"/><child link="caster_fork_link"/><origin xyz="${-0.28 * s} 0 ${0.01 * s}"/></joint>
+
+  <xacro:macro name="drive_wheel" params="side y">
+    <link name="${side}_wheel_link">
+      <inertial><mass value="${0.45 * s**3}"/><inertia ixx="${0.002 * s**5}" ixy="0" ixz="0" iyy="${0.001 * s**5}" iyz="0" izz="${0.002 * s**5}"/></inertial>
+      <visual><origin rpy="${pi / 2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry><material name="rubber"><color rgba="0.05 0.05 0.05 1"/></material></visual>
+      <collision><origin rpy="${pi / 2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
+    </link>
+    <joint name="${side}_wheel_joint" type="continuous"><parent link="base_link"/><child link="${side}_wheel_link"/><origin xyz="0 ${y} 0"/><axis xyz="0 1 0"/><limit effort="8" velocity="18"/></joint>
+  </xacro:macro>
+  <xacro:drive_wheel side="left" y="${base_width / 2 + wheel_width / 2}"/>
+  <xacro:drive_wheel side="right" y="${-base_width / 2 - wheel_width / 2}"/>
+
+  <link name="caster_link">
+    <!-- Ball caster, not a fixed wheel. The original warehouse robot got away
+         with a cylinder caster held at mu=0.01: it cannot swivel, so it has to
+         *slide* sideways whenever the robot turns. At this robot's scale that
+         stopped working - the wheels counter-rotate correctly (measured
+         +-1.64 rad/s for a 0.6 rad/s command) but the vehicle does not yaw at
+         all, because the small cylinder's contact grips far more than its
+         friction coefficients suggest. A sphere rolls in every direction, so
+         it never fights a turn, which is what a real ball-caster AMR uses. -->
+    <visual><geometry><sphere radius="${0.11 * s}"/></geometry><material name="rubber"><color rgba="0.05 0.05 0.05 1"/></material></visual>
+    <collision><geometry><sphere radius="${0.11 * s}"/></geometry></collision>
+  </link>
+  <joint name="caster_joint" type="fixed"><parent link="caster_fork_link"/><child link="caster_link"/><origin xyz="0 0 ${-0.01 * s}"/></joint>
+
+  <!-- One caster only (rear). A second caster in front would make the contact
+       set indeterminate - four rigid contacts on one body means the solver can
+       unload the drive wheels onto the casters, and the robot then spins its
+       wheels, creeps and veers instead of driving. Three contacts with the CoM
+       inside the triangle (see the inertial origin above) is both stable and
+       well conditioned. -->
+
+  <link name="lidar_link">
+    <inertial><mass value="0.15"/><inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0003"/></inertial>
+    <visual><geometry><cylinder radius="${0.045 * s}" length="${0.05 * s}"/></geometry><material name="lidar"><color rgba="0.12 0.12 0.14 1"/></material></visual>
+    <collision><geometry><cylinder radius="${0.045 * s}" length="${0.05 * s}"/></geometry></collision>
+  </link>
+  <link name="lidar_mount_link"><visual><origin xyz="0 0 ${0.05 * s}"/><geometry><cylinder radius="${0.072 * s}" length="${0.10 * s}"/></geometry><material name="mount"><color rgba="0.16 0.16 0.18 1"/></material></visual><collision><origin xyz="0 0 ${0.05 * s}"/><geometry><cylinder radius="${0.065 * s}" length="${0.09 * s}"/></geometry></collision></link>
+  <joint name="lidar_mount_joint" type="fixed"><parent link="top_cover_link"/><child link="lidar_mount_link"/><origin xyz="${0.16 * s} 0 ${0.07 * s}"/></joint>
+  <joint name="lidar_joint" type="fixed"><parent link="lidar_mount_link"/><child link="lidar_link"/><origin xyz="0 0 ${0.09 * s}"/></joint>
+
+  <!-- The lidar ends up ~0.26 m above the floor, inside the map's obstacle band
+       that maps/geomap.pgm calls obstacles, so what the scan sees and what the
+       map marks as occupied agree. -->
+  <gazebo reference="lidar_link">
+    <sensor name="${robot_name}_lidar" type="gpu_lidar">
+      <always_on>1</always_on><visualize>false</visualize><update_rate>15</update_rate><topic>/${robot_name}/scan</topic>
+      <frame_id>lidar_link</frame_id>
+      <lidar><scan><horizontal><samples>720</samples><resolution>1</resolution><min_angle>-3.14159</min_angle><max_angle>3.14159</max_angle></horizontal></scan><range><min>0.12</min><max>12.0</max><resolution>0.01</resolution></range></lidar>
+    </sensor>
+  </gazebo>
+  <xacro:fleet_gazebo_material link="base_link" rgba="0.95 0.65 0.05 1"/>
+  <xacro:fleet_gazebo_wheel_dynamics link="left_wheel_link" mu1="1.5" mu2="1.5" kp="10000" kd="100.0" fdir1="1 0 0"/>
+  <xacro:fleet_gazebo_wheel_dynamics link="right_wheel_link" mu1="1.5" mu2="1.5" kp="10000" kd="100.0" fdir1="1 0 0"/>
+  <xacro:fleet_gazebo_wheel_dynamics link="caster_link" mu1="0.0" mu2="0.0" kp="10000" kd="100.0"/>
+  <xacro:fleet_ros2_control name="${robot_name}" wheel_joints="${['left_wheel_joint', 'right_wheel_joint']}" controller_type="diff" controllers_file="${controllers_file}" namespace="${robot_name}"/>
+</robot>

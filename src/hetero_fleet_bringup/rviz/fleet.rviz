@@ -1,0 +1,294 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 0
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Task Markers1
+      Splitter Ratio: 0.5
+    Tree Height: 600
+  - Class: rviz_common/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+Visualization Manager:
+  Class: ""
+  Displays:
+
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Alpha: 0.3
+      Cell Size: 1
+      Color: 160; 160; 164
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Plane: XY
+      Plane Cell Count: 60
+      Reference Frame: <Fixed Frame>
+
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: Map
+      Alpha: 0.6
+      Color Scheme: map
+      Draw Behind: true
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map
+      Update Topic:
+        Value: /map_updates
+
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Task Markers
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /task_markers
+
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Show Arrows: false
+      Show Axes: true
+      Show Names: true
+      Marker Scale: 0.6
+      Update Interval: 0
+
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: light_1 model
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Value: /light_1/robot_description
+      TF Prefix: light_1
+      Alpha: 1
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: light_2 model
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Value: /light_2/robot_description
+      TF Prefix: light_2
+      Alpha: 1
+
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: heavy_1 model
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Value: /heavy_1/robot_description
+      TF Prefix: heavy_1
+      Alpha: 1
+
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: omni_1 model
+      Description Source: Topic
+      Description Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Value: /omni_1/robot_description
+      TF Prefix: omni_1
+      Alpha: 1
+
+    # --- light_1 ---------------------------------------------------------
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: light_1 scan
+      Topic:
+        Value: /light_1/scan_fixed
+        Depth: 5
+        Reliability Policy: Best Effort
+      Style: Flat Squares
+      Size (Pixels): 2
+      Color: 255; 170; 0
+      Color Transformer: FlatColor
+      Decay Time: 0.2
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: light_2 scan
+      Topic:
+        Value: /light_2/scan_fixed
+        Depth: 5
+        Reliability Policy: Best Effort
+      Style: Flat Squares
+      Size (Pixels): 2
+      Color: 120; 220; 90
+      Color Transformer: FlatColor
+      Decay Time: 0.2
+
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: omni_1 scan
+      Topic:
+        Value: /omni_1/scan_fixed
+        Depth: 5
+        Reliability Policy: Best Effort
+      Style: Flat Squares
+      Size (Pixels): 2
+      Color: 255; 60; 60
+      Color Transformer: FlatColor
+      Decay Time: 0.2
+
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: omni_1 plan
+      Topic:
+        Value: /omni_1/plan
+      Line Style:
+        Line Width: 0.04
+        Value: Lines
+      Color: 255; 60; 60
+      Alpha: 0.9
+
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: light_1 plan
+      Topic:
+        Value: /light_1/plan
+      Line Style:
+        Line Width: 0.04
+        Value: Lines
+      Color: 255; 170; 0
+      Alpha: 0.9
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: light_2 plan
+      Topic:
+        Value: /light_2/plan
+      Line Style:
+        Line Width: 0.04
+        Value: Lines
+      Color: 120; 220; 90
+      Alpha: 0.9
+
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: light_1 local costmap
+      Alpha: 0.35
+      Color Scheme: costmap
+      Draw Behind: false
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /light_1/local_costmap/costmap
+      Update Topic:
+        Value: /light_1/local_costmap/costmap_updates
+
+    # --- heavy_1 ---------------------------------------------------------
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: heavy_1 scan
+      Topic:
+        Value: /heavy_1/scan_fixed
+        Depth: 5
+        Reliability Policy: Best Effort
+      Style: Flat Squares
+      Size (Pixels): 2
+      Color: 60; 130; 255
+      Color Transformer: FlatColor
+      Decay Time: 0.2
+
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: heavy_1 plan
+      Topic:
+        Value: /heavy_1/plan
+      Line Style:
+        Line Width: 0.04
+        Value: Lines
+      Color: 60; 130; 255
+      Alpha: 0.9
+
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: heavy_1 global costmap
+      Alpha: 0.30
+      Color Scheme: costmap
+      Draw Behind: false
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /heavy_1/global_costmap/costmap
+      Update Topic:
+        Value: /heavy_1/global_costmap/costmap_updates
+
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+    - Class: rviz_default_plugins/PublishPoint
+  Views:
+    # Framed on the scanned map and nothing else. The map is 26.0 x 10.3 m on
+    # x [-11.3, 14.7], y [-3.3, 7.1], so the focal point sits on its centre and
+    # the camera is far enough back to hold all of it: the charging station is
+    # the west arm (x ~ -4.3) and the work zones run round the east half (up to
+    # x ~ 12.1), and both have to be in shot at once to watch a robot dock and
+    # another take a task. Orbit around the focal point to inspect the fleet;
+    # the fleet-status blocks are world-anchored text, so they never overlap
+    # the robots.
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 17
+      Focal Point:
+        X: 2
+        Y: 2
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 1.2
+      Target Frame: map
+      Value: Orbit (rviz)
+      Yaw: 0
+    Saved: ~
+  Value: true
+Window Geometry:
+  Height: 900
+  Width: 1500
+  Displays:
+    collapsed: false
+  Views:
+    collapsed: false

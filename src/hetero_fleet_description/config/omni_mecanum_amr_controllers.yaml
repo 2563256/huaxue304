@@ -1,0 +1,89 @@
+# ros2_control configuration for the mecanum (omnidirectional) AMR.
+#
+# See light_diff_amr_controllers.yaml for the three layout rules (controller
+# TYPE as a nested key under controller_manager/ros__parameters, controller
+# parameters in their own top-level section leading with ros__parameters).
+#
+# Unlike the two differential robots this one gets a full three-axis twist:
+# lateral (v_y) is what enables the sideways docking approach. Mecanum drive
+# needs all four wheel joints plus a wheelbase/track pair rather than a single
+# separation.
+#
+# Geometry from the URDF, already rescaled by s=0.61 for the scanned map (see
+# omni_mecanum_amr.xacro - its header explains why the scale is 0.42 and not the
+# 0.72 quoted in MAP_SWAP.md): wheels at x = +/-0.147, y = +/-0.1617,
+# radius 0.0399.
+# Keep the value below in step with the xacro - it is derived from
+# base_length/base_width/wheel_width there, not hand-picked.
+
+/<robot_name>/controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    mecanum_drive_controller:
+      type: mecanum_drive_controller/MecanumDriveController
+
+/<robot_name>/joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: true
+
+/<robot_name>/mecanum_drive_controller:
+  ros__parameters:
+    use_sim_time: true
+    front_left_wheel_command_joint_name:  "front_left_wheel_joint"
+    front_right_wheel_command_joint_name: "front_right_wheel_joint"
+    rear_left_wheel_command_joint_name:   "rear_left_wheel_joint"
+    rear_right_wheel_command_joint_name:  "rear_right_wheel_joint"
+
+    front_left_wheel_state_joint_name:  "front_left_wheel_joint"
+    front_right_wheel_state_joint_name: "front_right_wheel_joint"
+    rear_left_wheel_state_joint_name:   "rear_left_wheel_joint"
+    rear_right_wheel_state_joint_name:  "rear_right_wheel_joint"
+
+    # Jazzy's mecanum controller uses lx + ly, where lx/ly are the
+    # center-to-wheel projections on x/y: the wheel joints sit at
+    # x = base_length/2 - 0.10*s = 0.147 and y = base_width/2 + wheel_width/2
+    # = 0.1617, so lx + ly = 0.309.
+    kinematics:
+      wheels_radius: 0.040
+      sum_of_robot_center_projection_on_X_Y_axis: 0.309
+
+    # Frames already carry the robot namespace in this rendered file.
+    tf_frame_prefix_enable: false
+    reference_timeout: 0.5
+
+    publish_rate: 50.0
+    odom_frame_id: <robot_name>/odom
+    base_frame_id: <robot_name>/base_footprint
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+
+    # This controller version has no open-loop odometry mode. The bringup
+    # package derives omni odometry from the bridged Gazebo model pose.
+    enable_odom_tf: false
+
+    linear:
+      x:
+        has_velocity_limits: true
+        max_velocity: 0.55
+        min_velocity: -0.55
+        has_acceleration_limits: true
+        max_acceleration: 0.9
+        min_acceleration: -0.9
+      y:
+        has_velocity_limits: true
+        max_velocity: 0.55
+        min_velocity: -0.55
+        has_acceleration_limits: true
+        max_acceleration: 0.9
+        min_acceleration: -0.9
+    angular:
+      z:
+        has_velocity_limits: true
+        max_velocity: 1.2
+        min_velocity: -1.2
+        has_acceleration_limits: true
+        max_acceleration: 2.4
+        min_acceleration: -2.4
