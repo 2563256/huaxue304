@@ -83,7 +83,7 @@ def generate_launch_description():
         pre_actions.append(SetEnvironmentVariable('FASTDDS_BUILTIN_TRANSPORTS', transports))
     actions = [
         Node(package='ros_gz_bridge', executable='parameter_bridge', name='ros_gz_bridge', output='screen', parameters=[{'config_file': cfg}]),
-        Node(package='hetero_fleet_bringup', executable='scan_frame_relay.py', name='scan_frame_relay', output='screen'),
+        Node(package='hetero_fleet_bringup', executable='scan_frame_relay.py', name='scan_frame_relay', output='screen', parameters=[{'use_sim_time': True}]),
     ]
     actions = pre_actions + actions
 

@@ -1,49 +1,284 @@
-# A longer, statistically-flavoured scenario for the metrics report, on the
-# scanned office map (geomap_colour_noroof).
-#
-# 20 tasks with a spread of payloads, priorities and deadlines across all three
-# zone pairs. The point is to produce enough completed tasks that the summary
-# numbers (mean completion time, makespan, utilisation, energy per robot)
-# actually mean something, and to make the light/heavy split visible:
-# roughly half the tasks are light-only, a third are heavy-only, and the rest
-# are open to whoever the cost function prefers.
-#
-# The six pickup/dropoff pads alternate around the EASTERN half of the ring -
-# west to east along the +4.2 m arm, then back west along the south corridor -
-# and are deliberately spread out rather than paired: consecutive pads are
-# 1.9-3.7 m apart. Nothing sits in the east connector, which is the ring's only
-# north-south link at that end: working there closes the corridor and every
-# crossing turns into a head-on standoff. They are also clear of the fleet's
-# status labels, since a label drawn over a task point hides it in RViz. They
-# are the same markers the world draws (make_geomap_world.py ZONES) and
-# tools/verify_scene.py checks:
-#
-#   pickup   A(10.60,-0.43)  B(  1.70,  4.22)  C(  9.10,  4.22)
-#   dropoff  A( 8.10,-0.43)  B(  5.40,  4.22)  C( 11.00,  4.22)
-#
-# The 20 tasks use every pickup->dropoff combination; trips run 1.9 - 9.3 m
-# (mean 5.1 m). Between two tasks a robot also drives back to its charger in
-# the WEST arm, so the real deadhead is dominated by that trip, not by these.
-# See RUNBOOK.md 4.5.
-
+# Three-robot balanced workload; all tasks feasible, equal priority.
+# Includes grid path travel, initial/subsequent deadhead and 10 s handling.
+# Keep this order (do not --shuffle) to preserve the workload estimate.
 tasks:
-  - {id: t01, type: transport, pickup: [10.60, -0.43, 0.0], dropoff: [ 8.10, -0.43, 0.0],   payload_kg: 7.0,   required_capability: light_payload, priority: 2, deadline_sec: 300.0}
-  - {id: t02, type: transport, pickup: [ 1.70,  4.22, 0.0],  dropoff: [ 8.10, -0.43, 0.0],   payload_kg: 14.0,  required_capability: light_payload, priority: 1, deadline_sec: 320.0}
-  - {id: t03, type: transport, pickup: [ 9.10,  4.22, 0.0],  dropoff: [ 8.10, -0.43, 0.0],  payload_kg: 4.0,   required_capability: light_payload, priority: 3, deadline_sec: 260.0}
-  - {id: t04, type: transport, pickup: [10.60, -0.43, 0.0],  dropoff: [ 5.40,  4.22, 0.0],  payload_kg: 110.0, required_capability: heavy_payload, priority: 4, deadline_sec: 420.0}
-  - {id: t05, type: transport, pickup: [ 1.70,  4.22, 0.0], dropoff: [ 5.40,  4.22, 0.0],  payload_kg: 88.0,  required_capability: heavy_payload, priority: 2, deadline_sec: 420.0}
-  - {id: t06, type: transport, pickup: [ 9.10,  4.22, 0.0],  dropoff: [ 5.40,  4.22, 0.0],   payload_kg: 33.0,  required_capability: "",              priority: 3, deadline_sec: 360.0}
-  - {id: t07, type: transport, pickup: [10.60, -0.43, 0.0], dropoff: [11.00,  4.22, 0.0],   payload_kg: 27.0,  required_capability: "",              priority: 1, deadline_sec: 360.0}
-  - {id: t08, type: transport, pickup: [ 1.70,  4.22, 0.0], dropoff: [11.00,  4.22, 0.0],   payload_kg: 9.0,   required_capability: light_payload, priority: 5, deadline_sec: 60.0}
-  - {id: t09, type: transport, pickup: [ 9.10,  4.22, 0.0],  dropoff: [11.00,  4.22, 0.0],   payload_kg: 132.0, required_capability: heavy_payload, priority: 5, deadline_sec: 330.0}
-  - {id: t10, type: transport, pickup: [10.60, -0.43, 0.0],  dropoff: [ 8.10, -0.43, 0.0],   payload_kg: 18.0,  required_capability: light_payload, priority: 2, deadline_sec: 300.0}
-  - {id: t11, type: transport, pickup: [ 1.70,  4.22, 0.0],  dropoff: [ 8.10, -0.43, 0.0],   payload_kg: 11.0,  required_capability: light_payload, priority: 2, deadline_sec: 320.0}
-  - {id: t12, type: transport, pickup: [ 9.10,  4.22, 0.0], dropoff: [ 8.10, -0.43, 0.0],  payload_kg: 145.0, required_capability: heavy_payload, priority: 3, deadline_sec: 440.0}
-  - {id: t13, type: transport, pickup: [10.60, -0.43, 0.0],  dropoff: [ 5.40,  4.22, 0.0],  payload_kg: 16.0,  required_capability: light_payload, priority: 1, deadline_sec: 340.0}
-  - {id: t14, type: transport, pickup: [ 1.70,  4.22, 0.0], dropoff: [ 5.40,  4.22, 0.0],   payload_kg: 40.0,  required_capability: "",              priority: 4, deadline_sec: 380.0}
-  - {id: t15, type: transport, pickup: [ 9.10,  4.22, 0.0],  dropoff: [ 5.40,  4.22, 0.0],   payload_kg: 6.0,   required_capability: light_payload, priority: 2, deadline_sec: 280.0}
-  - {id: t16, type: transport, pickup: [10.60, -0.43, 0.0],  dropoff: [11.00,  4.22, 0.0],   payload_kg: 76.0,  required_capability: heavy_payload, priority: 3, deadline_sec: 400.0}
-  - {id: t17, type: transport, pickup: [ 1.70,  4.22, 0.0], dropoff: [11.00,  4.22, 0.0],   payload_kg: 13.0,  required_capability: light_payload, priority: 2, deadline_sec: 300.0}
-  - {id: t18, type: transport, pickup: [ 9.10,  4.22, 0.0],  dropoff: [11.00,  4.22, 0.0],  payload_kg: 55.0,  required_capability: "",              priority: 3, deadline_sec: 360.0}
-  - {id: t19, type: transport, pickup: [10.60, -0.43, 0.0],  dropoff: [ 8.10, -0.43, 0.0],  payload_kg: 3.0,   required_capability: light_payload, priority: 1, deadline_sec: 260.0}
-  - {id: t20, type: transport, pickup: [ 1.70,  4.22, 0.0], dropoff: [ 8.10, -0.43, 0.0],   payload_kg: 99.0,  required_capability: heavy_payload, priority: 4, deadline_sec: 430.0}
+- id: balanced_20_01
+  type: transport
+  pickup:
+  - 9.1
+  - 4.22
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 30.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_02
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 45.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_03
+  type: transport
+  pickup:
+  - 9.1
+  - 4.22
+  - 0.0
+  dropoff:
+  - 8.1
+  - -0.43
+  - 0.0
+  payload_kg: 65.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_04
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 30.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_05
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 8.1
+  - -0.43
+  - 0.0
+  payload_kg: 45.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_06
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 95.0
+  required_capability: heavy_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_07
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 8.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_08
+  type: transport
+  pickup:
+  - 9.1
+  - 4.22
+  - 0.0
+  dropoff:
+  - 8.1
+  - -0.43
+  - 0.0
+  payload_kg: 12.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_09
+  type: transport
+  pickup:
+  - 9.1
+  - 4.22
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 16.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_10
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 8.1
+  - -0.43
+  - 0.0
+  payload_kg: 110.0
+  required_capability: heavy_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_11
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 120.0
+  required_capability: heavy_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_12
+  type: transport
+  pickup:
+  - 9.1
+  - 4.22
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 8.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_13
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 8.1
+  - -0.43
+  - 0.0
+  payload_kg: 95.0
+  required_capability: heavy_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_14
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 110.0
+  required_capability: heavy_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_15
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 12.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_16
+  type: transport
+  pickup:
+  - 10.6
+  - -0.43
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 16.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_17
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 120.0
+  required_capability: heavy_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_18
+  type: transport
+  pickup:
+  - 9.1
+  - 4.22
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 8.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_19
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 11.0
+  - 4.22
+  - 0.0
+  payload_kg: 12.0
+  required_capability: light_payload
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_20
+  type: transport
+  pickup:
+  - 1.7
+  - 4.22
+  - 0.0
+  dropoff:
+  - 8.1
+  - -0.43
+  - 0.0
+  payload_kg: 65.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0

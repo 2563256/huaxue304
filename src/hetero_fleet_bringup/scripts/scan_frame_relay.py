@@ -1,205 +1,147 @@
 #!/usr/bin/python3
-"""Publish each robot's scan, plus a separate "where the other robots are" scan.
+"""Correct lidar frames and publish exact teammate outlines from ground truth.
 
-Two topics per robot, and the SPLIT between them is the whole point:
-
-  /<robot>/scan_fixed       the real lidar, only with the frame corrected.
-  /<robot>/robot_obstacles  synthetic returns for the other two vehicles.
-
-FRAME (applies to both). Gazebo stamps the scans with a bare "lidar_link",
-which is not in the TF tree - the real frame is "<robot>/lidar_link". Without
-the rewrite the costmap's message filter cannot transform anything and silently
-drops every scan.
-
-WHY THE OTHER ROBOTS NEED SYNTHESISING. The fleet is deliberately
-heterogeneous and that breaks robot-to-robot perception: after the 0.31-0.42
-rescale the 2D lidars sit at (heights above the floor, measured off the URDFs)
-
-    light_1             0.20 m
-    omni_1              0.23 m
-    heavy_1             0.24 m
-
-while the bodies are 0.10-0.20 m tall. A 2D lidar is a single slice at its own
-height, so anything shorter than it is not "hard to see" - it is invisible.
-Each robot's ground-truth odometry is therefore written into the others'
-robot_obstacles scan as a short run of returns at the near face of its
-footprint.
-
-WHY IT IS A SEPARATE TOPIC. The first version injected these returns straight
-into scan_fixed, which every consumer reads - including each robot's GLOBAL
-costmap. That made a parked vehicle a permanent, lethal obstacle in the
-planning grid, so a robot that came back to a shared pickup/dropoff zone while
-another was still standing there got
-
-    GridBased plugin failed to plan from (-4.05, -7.49) to (-4.00, -6.00):
-    "no valid path found"
-
-for a 1.5 m move, and the task died after its single requeue. Only the LOCAL
-costmap and the collision monitor subscribe to robot_obstacles; the global
-costmap sees pure lidar, so planning is never blocked by a stationary
-neighbour, while reactive avoidance and the emergency stop still work.
+Teammate scans have their own 10 Hz timer and use base_footprint, independent
+of lidar height/offset and of whether Gazebo's physical scan has arrived.
+Local costmaps see every body. A separate global-planning scan includes only
+vehicles stationary for 10 seconds, avoiding route flips around passing traffic.
 """
-
+import copy
 import math
 import os
-
+import numpy as np
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
+
+
+def rectangle_returns(angles, center_x, center_y, yaw, length, width,
+                      range_min=0.01, range_max=12.0):
+    """Intersect rays at (0,0) with a rotated rectangle, using slab intervals.
+
+    Exact near-face distances retain bumper/corner coverage and work across
+    the -pi/+pi seam. Inf means clear sky and is used to clear old positions.
+    """
+    angles=np.asarray(angles,dtype=float)
+    c,s=math.cos(yaw),math.sin(yaw)
+    origin=np.array([-c*center_x-s*center_y, s*center_x-c*center_y])
+    dirs=np.stack([np.cos(angles-yaw),np.sin(angles-yaw)],axis=1)
+    half=np.array([length/2.,width/2.])
+    lo=np.full(len(angles),-np.inf);hi=np.full(len(angles),np.inf)
+    for axis in range(2):
+        d=dirs[:,axis];parallel=np.abs(d)<1e-10
+        denom=np.where(parallel,1.,d)
+        a=(-half[axis]-origin[axis])/denom
+        b=(half[axis]-origin[axis])/denom
+        near=np.where(parallel,-np.inf,np.minimum(a,b))
+        far=np.where(parallel,np.inf,np.maximum(a,b))
+        if abs(origin[axis])>half[axis]:
+            far=np.where(parallel,-np.inf,far)
+        lo=np.maximum(lo,near);hi=np.minimum(hi,far)
+    hit=(hi>=np.maximum(lo,0.))&(lo<=range_max)
+    return np.where(hit,np.clip(lo,range_min,range_max),np.inf)
+
+
+def update_stationary(state, pose, now, linear_speed=0., angular_speed=0.):
+    """Track net motion in ROS time; moving or turning vehicles leave at once."""
+    anchor = state.get('stationary_anchor')
+    since = state.get('stationary_since', now)
+    moved = anchor is None or math.hypot(pose[0]-anchor[0], pose[1]-anchor[1]) > .04
+    turned = anchor is not None and abs(math.atan2(
+        math.sin(pose[2]-anchor[2]), math.cos(pose[2]-anchor[2]))) > .15
+    if moved or turned or linear_speed > .03 or abs(angular_speed) > .05 or now < since:
+        state['stationary_anchor'] = pose
+        state['stationary_since'] = now
+    elif 'stationary_since' not in state:
+        state['stationary_since'] = now
+
 
 
 class ScanFrameRelay(Node):
     def __init__(self):
-        super().__init__("scan_frame_relay")
-        share = get_package_share_directory("hetero_fleet_description")
-        with open(os.path.join(share, "config", "robot_profiles.yaml")) as f:
-            profiles = yaml.safe_load(f)
-        types = profiles["robot_types"]
-
-        # How far each robot's lidar sits AHEAD OF ITS BASE, in metres. This
-        # used to be one constant (0.20) for the whole fleet, which was wrong
-        # for every type: the real offsets are 0.057 (light), 0.087 (heavy) and
-        # 0.076 (omni), so every synthetic teammate blob was drawn 11-14 cm too
-        # far forward - i.e. up to a third of a robot's length of error in the
-        # very signal the local costmaps and the collision monitor use to avoid
-        # each other.
-        #
-        # Values are read off the URDFs (the lidar_link -> base_link chain): if
-        # a lidar_mount_joint origin changes, change it here too. The parameter
-        # stays as the fallback for a type that is not listed.
-        self.default_lidar_dx = float(
-            self.declare_parameter("lidar_dx", 0.20).value
-        )
-        self.lidar_dx_by_type = {
-            "light_diff_amr": 0.057,
-            "heavy_diff_amr": 0.087,
-            "omni_mecanum_amr": 0.076,
-        }
-
-        self.robots = {}
-        for entry in profiles["fleet"]:
-            name = entry["name"]
-            sx, sy, syaw = entry["spawn"]
-            length, width = types[entry["type"]]["footprint"]
-            self.robots[name] = {
-                "spawn": (float(sx), float(sy), float(syaw)),
-                "lidar_dx": self.lidar_dx_by_type.get(
-                    entry["type"], self.default_lidar_dx
-                ),
-                # Inscribed radius, not the half-diagonal: the injected blob
-                # is a keep-out marker, and using the circumscribed radius made
-                # every teammate ~40% fatter than it is. With four robots in a
-                # 26 x 10 m hall that inflated each local costmap into a sea of
-                # lethal cells whenever two of them worked near each other, and
-                # MPPI then found no feasible rollout at all ("Optimizer reset")
-                # - both robots stood still waiting for the other one.
-                "half_diag": 0.5 * min(length, width),
-                "pose": None,          # (x, y, yaw) on the map
+        super().__init__('scan_frame_relay')
+        share=get_package_share_directory('hetero_fleet_description')
+        with open(os.path.join(share,'config','robot_profiles.yaml')) as f:
+            profiles=yaml.safe_load(f)
+        self.robots={}
+        for entry in profiles['fleet']:
+            typ=profiles['robot_types'][entry['type']]
+            self.robots[entry['name']]={
+                'spawn':tuple(map(float,entry['spawn'])),
+                'footprint':tuple(map(float,typ['footprint'])),
+                'pose':None,
             }
-
-        self.max_range = float(self.declare_parameter("max_range", 12.0).value)
-
-        self.pubs = {}
-        self.obstacle_pubs = {}
+        self.max_range=float(self.declare_parameter('max_range',12.0).value)
+        self.samples=int(self.declare_parameter('samples',1080).value)
+        self.rate=float(self.declare_parameter('publish_rate_hz',10.0).value)
+        self.padding=float(self.declare_parameter('teammate_padding',0.12).value)
+        self.stationary_sec=float(self.declare_parameter('stationary_planning_sec',10.0).value)
+        self.angles=np.arange(self.samples)*2*math.pi/self.samples-math.pi
+        self.pubs={};self.obstacle_pubs={};self.contact_pubs={};self.planning_pubs={}
         for name in self.robots:
-            self.pubs[name] = self.create_publisher(LaserScan, f"/{name}/scan_fixed", 10)
-            self.obstacle_pubs[name] = self.create_publisher(
-                LaserScan, f"/{name}/robot_obstacles", 10
-            )
-            self.create_subscription(
-                LaserScan, f"/{name}/scan", lambda m, n=name: self.on_scan(m, n), 10
-            )
-            self.create_subscription(
-                Odometry, f"/{name}/odom", lambda m, n=name: self.on_odom(n, m), 10
-            )
+            self.pubs[name]=self.create_publisher(LaserScan,f'/{name}/scan_fixed',10)
+            self.obstacle_pubs[name]=self.create_publisher(LaserScan,f'/{name}/robot_obstacles',10)
+            self.contact_pubs[name]=self.create_publisher(LaserScan,f'/{name}/robot_contact',10)
+            self.planning_pubs[name]=self.create_publisher(LaserScan,f'/{name}/robot_planning_obstacles',10)
+            self.create_subscription(LaserScan,f'/{name}/scan',lambda m,n=name:self.on_scan(m,n),qos_profile_sensor_data)
+            self.create_subscription(Odometry,f'/{name}/odom',lambda m,n=name:self.on_odom(n,m),qos_profile_sensor_data)
+        self.create_timer(1./self.rate,self.publish_robot_obstacles)
 
-    # ------------------------------------------------------------------ poses
-    def on_odom(self, name, msg):
-        """Ground-truth pose on the map: spawn + R(spawn_yaw) * odom."""
-        sx, sy, syaw = self.robots[name]["spawn"]
-        dx = msg.pose.pose.position.x
-        dy = msg.pose.pose.position.y
-        c0, s0 = math.cos(syaw), math.sin(syaw)
-        q = msg.pose.pose.orientation
-        yaw = math.atan2(
-            2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        )
-        self.robots[name]["pose"] = (
-            sx + c0 * dx - s0 * dy,
-            sy + s0 * dx + c0 * dy,
-            yaw + syaw,
-        )
+    def on_odom(self,name,msg):
+        sx,sy,syaw=self.robots[name]['spawn']
+        dx,dy=msg.pose.pose.position.x,msg.pose.pose.position.y
+        c,s=math.cos(syaw),math.sin(syaw);q=msg.pose.pose.orientation
+        yaw=math.atan2(2*(q.w*q.z+q.x*q.y),1-2*(q.y*q.y+q.z*q.z))
+        pose=(sx+c*dx-s*dy,sy+s*dx+c*dy,yaw+syaw)
+        state=self.robots[name];state['pose']=pose
+        twist=msg.twist.twist
+        update_stationary(state,pose,self.get_clock().now().nanoseconds/1e9,
+                         math.hypot(twist.linear.x,twist.linear.y),twist.angular.z)
 
-    # ------------------------------------------------------------------ scan
-    def on_scan(self, msg, name):
-        msg.header.frame_id = f"{name}/lidar_link"
-        # The real lidar goes out untouched - the global costmap plans from it.
+    def on_scan(self,msg,name):
+        msg.header.frame_id=f'{name}/lidar_link'
         self.pubs[name].publish(msg)
-        # Four local costmaps and four collision monitors depend on the
-        # synthetic topic; one bad message must not take them all down.
-        try:
-            self.publish_robot_obstacles(msg, name)
-        except Exception as exc:  # noqa: BLE001
-            self.get_logger().warn(
-                f"{name}: robot-obstacle scan skipped ({exc!r})",
-                throttle_duration_sec=5.0,
-            )
 
-    def publish_robot_obstacles(self, scan, name):
-        """Synthetic scan with one blob per other robot, in the lidar frame."""
-        out = LaserScan()
-        out.header = scan.header
-        out.angle_min = scan.angle_min
-        out.angle_max = scan.angle_max
-        out.angle_increment = scan.angle_increment
-        out.time_increment = scan.time_increment
-        out.scan_time = scan.scan_time
-        out.range_min = scan.range_min
-        out.range_max = scan.range_max
-        out.ranges = [float("inf")] * len(scan.ranges)
-
-        ego = self.robots[name]["pose"]
-        n = len(out.ranges)
-        if ego is not None and n:
-            ex, ey, eyaw = ego
-            inc = out.angle_increment
-            if inc > 0.0:
-                c, s = math.cos(eyaw), math.sin(eyaw)
-                for other, state in self.robots.items():
-                    if other == name or state["pose"] is None:
-                        continue
-                    ox, oy, _ = state["pose"]
-                    wx, wy = ox - ex, oy - ey
-                    # The blob is drawn in the EGO robot's lidar frame, so the
-                    # offset that comes off is the EGO's, not the teammate's.
-                    bx = c * wx + s * wy - self.robots[name]["lidar_dx"]
-                    by = -s * wx + c * wy
-                    rng = math.hypot(bx, by)
-                    half = state["half_diag"]
-                    surface = rng - half
-                    if surface > min(self.max_range, out.range_max):
-                        continue
-                    surface = max(surface, out.range_min)
-                    bearing = math.atan2(by, bx)
-                    spread = math.atan2(half, max(rng, half))
-                    i0 = int(round((bearing - spread - out.angle_min) / inc))
-                    i1 = int(round((bearing + spread - out.angle_min) / inc))
-                    spans = [(i0, i1)] if i0 <= i1 else [(i0, n - 1), (0, i1)]
-                    for a, b in spans:
-                        for i in range(max(0, a), min(n - 1, b) + 1):
-                            if out.ranges[i] > surface:
-                                out.ranges[i] = surface
-        self.obstacle_pubs[name].publish(out)
+    def publish_robot_obstacles(self):
+        clock=self.get_clock().now();stamp=clock.to_msg();now=clock.nanoseconds/1e9
+        for name,ego in self.robots.items():
+            if ego['pose'] is None:
+                continue
+            ex,ey,eyaw=ego['pose'];c,s=math.cos(eyaw),math.sin(eyaw)
+            ranges=np.full(self.samples,np.inf);contact_ranges=np.full(self.samples,np.inf)
+            planning_ranges=np.full(self.samples,np.inf)
+            for other,state in self.robots.items():
+                if other==name or state['pose'] is None:continue
+                ox,oy,oyaw=state['pose'];dx,dy=ox-ex,oy-ey
+                bx,by=c*dx+s*dy,-s*dx+c*dy
+                length,width=state['footprint']
+                returns=rectangle_returns(self.angles,bx,by,oyaw-eyaw,
+                    length+2*self.padding,width+2*self.padding,.01,self.max_range)
+                ranges=np.minimum(ranges,returns)
+                if now-state.get("stationary_since",now)>=self.stationary_sec:
+                    planning_ranges=np.minimum(planning_ranges,returns)
+                contact_ranges=np.minimum(contact_ranges,rectangle_returns(
+                    self.angles,bx,by,oyaw-eyaw,length,width,.01,self.max_range))
+            out=LaserScan();out.header.stamp=stamp
+            out.header.frame_id=f'{name}/base_footprint'
+            out.angle_min=-math.pi;out.angle_increment=2*math.pi/self.samples
+            out.angle_max=float(self.angles[-1]);out.scan_time=1./self.rate
+            out.range_min=.01;out.range_max=self.max_range
+            out.ranges=ranges.tolist()
+            self.obstacle_pubs[name].publish(out)
+            contact=copy.deepcopy(out);contact.ranges=contact_ranges.tolist()
+            self.contact_pubs[name].publish(contact)
+            planning=copy.deepcopy(out);planning.ranges=planning_ranges.tolist()
+            self.planning_pubs[name].publish(planning)
 
 
 def main():
-    rclpy.init()
-    rclpy.spin(ScanFrameRelay())
-    rclpy.shutdown()
+    rclpy.init();node=ScanFrameRelay()
+    try:rclpy.spin(node)
+    finally:node.destroy_node();rclpy.shutdown()
 
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':main()

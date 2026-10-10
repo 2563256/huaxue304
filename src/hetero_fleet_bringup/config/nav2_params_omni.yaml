@@ -1,18 +1,8 @@
-# Nav2 parameters for the OMNI mecanum AMR (0.403 x 0.353 m, 0.55 m/s).
-#
-# All three robot types share this file's structure; what differs is:
-#   - inflation_radius / cost_scaling_factor  (how much clearance it keeps)
-#   - max_vel_x / max_vel_theta               (how fast it is allowed to go)
-#   - whether lateral motion is allowed       (this one CAN strafe)
-#
-# Clearance is (inscribed radius) + (inflation radius). This robot is the
-# widest in the fleet (0.403 x 0.353 m, wheels included), so it sets the bar
-# for the whole map: 0.176 + 0.21 = 0.386 m, against the heavy AMR's 0.361 m
-# and the light AMR's 0.305 m. All three still fit the scanned office ring
-# corridor (see MAP_SWAP.md); what makes this robot special on this map is
-# that it can strafe, which the differential pair cannot.
-#
-# The launch file rewrites <robot_name> to the concrete instance.
+# Omni AMR: 0.672 x 0.588 m collision footprint, 0.55 m/s forward.
+# Chassis-fixed X mecanum contacts reproduce forward/strafe/yaw consistently.
+# MPPI and the velocity smoother use matching acceleration constraints.
+# Inflation is a soft cost field; clearance depends on the padded footprint.
+# The launch file resolves <robot_name> and <bringup_share>.
 
 # AMCL runs one filter per robot against the shared map. The frame ids MUST be
 # namespaced: the TF tree contains <robot_name>/odom and
@@ -34,6 +24,7 @@ amcl:
 bt_navigator:
   ros__parameters:
     use_sim_time: true
+    default_nav_to_pose_bt_xml: <bringup_share>/config/omni_navigation.xml
     global_frame: map
     robot_base_frame: <robot_name>/base_footprint
     odom_topic: /<robot_name>/odom
@@ -48,7 +39,7 @@ controller_server:
     use_sim_time: true
     controller_frequency: 20.0
     min_x_velocity_threshold: 0.001
-    min_y_velocity_threshold: 0.05
+    min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     progress_checker_plugins: ["progress_checker"]
@@ -57,10 +48,10 @@ controller_server:
 
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      # See the note in nav2_params_light.yaml: a collision-monitor stop must
-      # not be mistaken for a stuck robot.
+      # Local recovery starts after 15 s of no motion. The outer scheduler
+      # watchdog waits 45 s of simulation time before intervening.
       required_movement_radius: 0.2
-      movement_time_allowance: 30.0
+      movement_time_allowance: 15.0
 
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -73,32 +64,26 @@ controller_server:
       time_steps: 56
       model_dt: 0.05
       batch_size: 2000
-      vx_std: 0.2
-      vy_std: 0.2            # unused while motion_model is "DiffDrive"
-      wz_std: 0.4
+      vx_std: 0.20
+      vy_std: 0.20
+      wz_std: 0.35
       vx_max: 0.55           # omni AMR top speed (see robot_profiles.yaml)
       vx_min: -0.25
-      vy_max: 0.55
+      vy_max: 0.40
       wz_max: 1.2
       iteration_count: 1
-      prune_distance: 1.2
+      prune_distance: 1.7
       transform_tolerance: 0.1
       temperature: 0.3
       gamma: 0.015
-      # "Diff" even though the hardware is mecanum, because that is what this
-      # simulated base can actually execute. Measured straight to the
-      # controller's reference topic on a single clean Gazebo instance:
-      # forward speed tracks to ~100% and yaw rate to ~94%, but a pure strafe
-      # only delivers ~40%. An "Omni" roll-out therefore predicts lateral
-      # motion the plant never produces, MPPI keeps re-issuing corrections
-      # that do not land, and the robot snakes: with "Omni" a 1.3 m move took
-      # 4.2 m of travel (wind-up 3.3x) and the goal still ended ABORTED.
-      #
-      # "Diff" still allows in-place rotation, so tight turns are unaffected.
-      # The mecanum wheels, the omnidirectional / precise_docking capability
-      # flags and the cmd_vel_stamper lateral mapping all stay as they are, so
-      # a docking routine that commands linear.y explicitly still strafes.
-      motion_model: "DiffDrive"
+      # Chassis-fixed X roller contact constraints now reproduce lateral motion.
+      # Prediction limits match the final velocity smoother.
+      motion_model: "Omni"
+      ax_max: 0.5
+      ax_min: -0.7
+      ay_max: 0.5
+      ay_min: -0.7
+      az_max: 1.4
       visualize: false
       TrajectoryVisualizer:
         trajectory_step: 5
@@ -112,40 +97,33 @@ controller_server:
       GoalCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 5.0
+        cost_weight: 10.0
         threshold_to_consider: 1.4
       GoalAngleCritic:
         enabled: true
         cost_power: 1
         cost_weight: 3.0
         threshold_to_consider: 0.5
+      # Holonomic motion must not be penalized for sideways or reverse travel.
       PreferForwardCritic:
-        enabled: true
+        enabled: false
         cost_power: 1
-        cost_weight: 5.0
+        cost_weight: 1.0
         threshold_to_consider: 0.5
       ObstaclesCritic:
         enabled: true
         cost_power: 1
-        repulsion_weight: 1.5
-        critical_weight: 20.0
-        # FALSE, for the same reason as heavy_1: this robot is 0.403 x 0.353 m
-        # and the ring corridor is ~1.2-2.5 m wide, so a full-footprint rollout
-        # check leaves MPPI with no feasible trajectory and it falls back to
-        # zero velocity ("Optimizer fail to compute path"). With false, MPPI
-        # checks a circle of the inscribed radius (0.176 m) against the
-        # costmap, and the inflation layer (0.21 >= 0.176) is what keeps that
-        # circle off the lethal cells. Planning still uses the true rectangle:
-        # nav2_smac_planner does non-circular footprint collision checking, so
-        # the path the controller follows never requires clipping a corner.
-        consider_footprint: false
+        repulsion_weight: 0.75
+        critical_weight: 40.0
+        # Check the full current body, including corners, against moving robots.
+        consider_footprint: true
         collision_cost: 10000.0
-        collision_margin_distance: 0.05
-        near_goal_distance: 0.5
+        collision_margin_distance: 0.12
+        near_goal_distance: 1.0
       PathAlignCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 14.0
+        cost_weight: 16.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 4
         threshold_to_consider: 0.5
@@ -154,11 +132,14 @@ controller_server:
       PathFollowCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 5.0
-        offset_from_furthest: 5
-        threshold_to_consider: 1.4
+        cost_weight: 12.0
+        offset_from_furthest: 15
+        # Keep directional progress active through the final metre.
+        threshold_to_consider: 0.5
+      # Footprint collision checking handles orientation clearance; do not
+      # force a full body turn at every path bend on an omni chassis.
       PathAngleCritic:
-        enabled: true
+        enabled: false
         cost_power: 1
         cost_weight: 2.0
         offset_from_furthest: 4
@@ -184,7 +165,7 @@ local_costmap:
       # centre even though the base can physically stand closer. The polygon's
       # inscribed radius is the true 0.176 m half-width, so a stance the robot
       # can legally reach is never reported as occupied.
-      footprint: "[[0.202, 0.176], [0.202, -0.176], [-0.202, -0.176], [-0.202, 0.176]]"
+      footprint: "[[0.336, 0.294], [0.336, -0.294], [-0.336, -0.294], [-0.336, 0.294]]"
       # 3 cm of padding on top of the true outline. Without it the costmap's
       # lethal radius equals the physical contact distance, so a robot that
       # brushes a wall sits inside its own lethal cell and MPPI finds no
@@ -196,11 +177,11 @@ local_costmap:
       # without it the costmap only pushes updates to existing subscribers and
       # RViz shows "No map received" for this robot.
       always_send_full_costmap: true
-      plugins: ["obstacle_layer", "inflation_layer"]
+      plugins: ["obstacle_layer", "robot_obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: scan robot_obstacles
+        observation_sources: scan
         scan:
           topic: /<robot_name>/scan_fixed
           max_obstacle_height: 2.0
@@ -213,11 +194,18 @@ local_costmap:
           obstacle_min_range: 0.0
         # Other vehicles, synthesised - local costmap only, see the note in
         # nav2_params_light.yaml.
+      robot_obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        combination_method: 1
+        observation_sources: robot_obstacles
         robot_obstacles:
           topic: /<robot_name>/robot_obstacles
           max_obstacle_height: 2.0
-          clearing: false
+          clearing: true
           marking: true
+          inf_is_valid: true
+          observation_persistence: 0.0
           data_type: "LaserScan"
           raytrace_max_range: 12.0
           raytrace_min_range: 0.0
@@ -226,7 +214,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.5
-        inflation_radius: 0.35
+        inflation_radius: 0.60
       always_reset_initial_costmap: false
       # Local rolling window: unobserved cells are free (see the note in
       # nav2_params_light.yaml - MPPI treats NO_INFORMATION as an obstacle, so
@@ -246,7 +234,7 @@ global_costmap:
       # See the note on the local costmap: a rectangular footprint keeps the
       # inscribed radius at the true 0.176 m half-width, so the robot cannot
       # be stranded in a cell it is told it cannot occupy.
-      footprint: "[[0.202, 0.176], [0.202, -0.176], [-0.202, -0.176], [-0.202, 0.176]]"
+      footprint: "[[0.336, 0.294], [0.336, -0.294], [-0.336, -0.294], [-0.336, 0.294]]"
       # 3 cm of padding on top of the true outline. Without it the costmap's
       # lethal radius equals the physical contact distance, so a robot that
       # brushes a wall sits inside its own lethal cell and MPPI finds no
@@ -257,7 +245,10 @@ global_costmap:
       always_send_full_costmap: true
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # The known scene comes from the static map. Passing traffic remains
+      # in the local lidar / exact-body layers and collision monitor. Only
+      # long stationary vehicles enter global planning, preventing loop flips.
+      plugins: ["static_layer", "robot_obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -275,16 +266,34 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 10.0
           obstacle_min_range: 0.0
+      robot_obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        combination_method: 1
+        observation_sources: robot_obstacles
+        robot_obstacles:
+          topic: /<robot_name>/robot_planning_obstacles
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          inf_is_valid: true
+          observation_persistence: 0.0
+          data_type: "LaserScan"
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 10.0
+          obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.5
-        inflation_radius: 0.35
+        inflation_radius: 0.60
       transform_tolerance: 0.5
 
 planner_server:
   ros__parameters:
     use_sim_time: true
-    expected_planner_frequency: 1.0
+    # Expected computation cadence only; the BT controls replanning triggers.
+    expected_planner_frequency: 0.0666667
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_smac_planner::SmacPlanner2D"
@@ -339,49 +348,90 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.55, 0.55, 1.2]   # [vx, vy, wz] - lateral enabled
-    min_velocity: [-0.55, -0.55, -1.2]
-    max_accel: [0.9, 0.9, 2.4]
-    max_decel: [-0.9, -0.9, -2.4]
+    max_velocity: [0.55, 0.40, 1.2]   # [vx, vy, wz] - lateral enabled
+    min_velocity: [-0.55, -0.40, -1.2]
+    max_accel: [0.5, 0.5, 1.4]
+    max_decel: [-0.7, -0.7, -1.4]
     odom_topic: /<robot_name>/odom
-    odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
+    odom_duration: 0.2
+    deadband_velocity: [0.008, 0.008, 0.02]
     velocity_timeout: 1.0
 
+# No proximity slowdown. Emergency contact stop remains authoritative.
 collision_monitor:
   ros__parameters:
     use_sim_time: true
     base_frame_id: <robot_name>/base_footprint
     odom_frame_id: <robot_name>/odom
-    # RELATIVE on purpose - see the note in nav2_params_light.yaml.
-    cmd_vel_in_topic: "cmd_vel_smoothed"
-    cmd_vel_out_topic: "cmd_vel"
+    cmd_vel_in_topic: cmd_vel_smoothed
+    cmd_vel_out_topic: cmd_vel
     transform_tolerance: 0.2
-    source_timeout: 5.0
+    source_timeout: 1.0
     stop_pub_timeout: 2.0
-    polygons: ["PolygonSlow", "PolygonStop"]
-    PolygonSlow:
-      type: "polygon"
-      points: "[[1.00, 0.66], [1.00, -0.66], [-0.32, -0.66], [-0.32, 0.66]]"
-      action_type: "slowdown"
-      min_points: 3
-      slowdown_ratio: 0.4
-      visualize: true
-      polygon_pub_topic: "polygon_slowdown"
+    polygons:
+    - PolygonStop
     PolygonStop:
-      type: "polygon"
-      # Must enclose the real body (half-extents 0.202 x 0.176) or the
-      # emergency stop would let something graze the wheels.
-      points: "[[0.34, 0.24], [0.34, -0.24], [-0.24, -0.24], [-0.24, 0.24]]"
-      action_type: "stop"
-      min_points: 4
+      type: velocity_polygon
+      action_type: stop
+      min_points: 2
       visualize: true
-      polygon_pub_topic: "polygon_stop"
-    observation_sources: ["robot_obstacles"]
-    scan:
-      type: "scan"
-      topic: /<robot_name>/scan_fixed
-    # See the note in nav2_params_light.yaml.
+      polygon_pub_topic: polygon_stop
+      holonomic: true
+      velocity_polygons:
+      - forward
+      - reverse_left
+      - reverse_right
+      - left
+      - right
+      - turning
+      forward:
+        points: '[[0.456, 0.344], [0.456, -0.344], [0, -0.344], [0, 0.344]]'
+        linear_min: 0.02
+        linear_max: 2.0
+        theta_min: -0.1
+        theta_max: 0.1
+        direction_start_angle: -0.7853981633974483
+        direction_end_angle: 0.7853981633974483
+      reverse_left:
+        points: '[[0, 0.344], [0, -0.344], [-0.456, -0.344], [-0.456, 0.344]]'
+        linear_min: 0.02
+        linear_max: 2.0
+        theta_min: -0.1
+        theta_max: 0.1
+        direction_start_angle: 2.356194490192345
+        direction_end_angle: 3.141592653589793
+      reverse_right:
+        points: '[[0, 0.344], [0, -0.344], [-0.456, -0.344], [-0.456, 0.344]]'
+        linear_min: 0.02
+        linear_max: 2.0
+        theta_min: -0.1
+        theta_max: 0.1
+        direction_start_angle: -3.141592653589793
+        direction_end_angle: -2.356194490192345
+      left:
+        points: '[[0.386, 0.414], [0.386, 0], [-0.386, 0], [-0.386, 0.414]]'
+        linear_min: 0.02
+        linear_max: 2.0
+        theta_min: -0.1
+        theta_max: 0.1
+        direction_start_angle: 0.7853981633974483
+        direction_end_angle: 2.356194490192345
+      right:
+        points: '[[0.386, 0], [0.386, -0.414], [-0.386, -0.414], [-0.386, 0]]'
+        linear_min: 0.02
+        linear_max: 2.0
+        theta_min: -0.1
+        theta_max: 0.1
+        direction_start_angle: -2.356194490192345
+        direction_end_angle: -0.7853981633974483
+      turning:
+        points: '[[0.366, 0.324], [0.366, -0.324], [-0.366, -0.324], [-0.366, 0.324]]'
+        linear_min: 0.0
+        linear_max: 2.0
+        theta_min: -100.0
+        theta_max: 100.0
+    observation_sources:
+    - robot_obstacles
     robot_obstacles:
-      type: "scan"
-      topic: /<robot_name>/robot_obstacles
+      type: scan
+      topic: /<robot_name>/robot_contact

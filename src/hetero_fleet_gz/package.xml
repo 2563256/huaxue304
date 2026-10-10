@@ -8,6 +8,9 @@
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>gz_sim_vendor</depend>
+  <depend>gz_physics_vendor</depend>
+  <depend>gz_plugin_vendor</depend>
 
   <exec_depend>hetero_fleet_description</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
@@ -25,6 +28,6 @@
          sets with SetEnvironmentVariable. Without this export the world loads
          with "Unable to find uri[model://geomap_colour_noroof]" and the robots
          drive on an empty ground plane. -->
-    <gazebo_ros gazebo_model_path="${prefix}/models"/>
+    <gazebo_ros gazebo_model_path="${prefix}/models" plugin_path="${prefix}/../../lib"/>
   </export>
 </package>

@@ -82,6 +82,7 @@ class Probe(Node):
         msg.twist.linear.x = vx
         msg.twist.linear.y = vy
         msg.twist.angular.z = wz
+        start_sim = self.get_clock().now().nanoseconds / 1e9
         end = time.time() + duration
         while time.time() < end:
             msg.header.stamp = self.get_clock().now().to_msg()
@@ -90,15 +91,19 @@ class Probe(Node):
             # runs during a phase and every measurement comes back as a flat
             # zero, which looks exactly like a robot that cannot move.
             rclpy.spin_once(self, timeout_sec=0.05)
-        self.pub.publish(TwistStamped())      # stop
+        elapsed_sim = self.get_clock().now().nanoseconds / 1e9 - start_sim
+        stop = TwistStamped()
+        stop.header.stamp = self.get_clock().now().to_msg()
+        self.pub.publish(stop)
         settle = time.time() + 0.6
         while time.time() < settle:
             rclpy.spin_once(self, timeout_sec=0.05)
+        return elapsed_sim
 
     def phase(self, label, vx, vy, wz, duration):
         before = self.get_pose()
         before_c = self.get_ctrl_pose()
-        self.command(vx, vy, wz, duration)
+        elapsed_sim = self.command(vx, vy, wz, duration)
         after = self.get_pose()
         after_c = self.get_ctrl_pose()
         if before is None or after is None:
@@ -110,18 +115,21 @@ class Probe(Node):
         dy_b = -s * dx_w + c * dy_w
         dyaw = math.atan2(math.sin(after[2] - before[2]),
                           math.cos(after[2] - before[2]))
-        gain_x = dx_b / (vx * duration) if vx else float("nan")
-        gain_y = dy_b / (vy * duration) if vy else float("nan")
-        gain_w = dyaw / (wz * duration) if wz else float("nan")
+        if elapsed_sim <= 0:
+            print(f"  {label:22s} simulation clock did not advance; no measurement")
+            return
+        gain_x = dx_b / (vx * elapsed_sim) if vx else float("nan")
+        gain_y = dy_b / (vy * elapsed_sim) if vy else float("nan")
+        gain_w = dyaw / (wz * elapsed_sim) if wz else float("nan")
         extra = ""
         if before_c is not None and after_c is not None:
             c_dyaw = math.atan2(math.sin(after_c[2] - before_c[2]),
                                 math.cos(after_c[2] - before_c[2]))
             extra = (f"   [controller thinks dyaw={c_dyaw:+.3f}"
-                     f" gain={c_dyaw / (wz * duration):.2f}]" if wz else
+                     f" gain={c_dyaw / (wz * elapsed_sim):.2f}]" if wz else
                      f"   [controller thinks dy={after_c[1] - before_c[1]:+.3f}]")
         print(f"  {label:22s} commanded ({vx:+.2f},{vy:+.2f},{wz:+.2f}) for "
-              f"{duration:.1f}s -> ground truth ({dx_b:+.3f},{dy_b:+.3f}) m, "
+              f"{duration:.1f}s wall / {elapsed_sim:.2f}s sim -> ground truth ({dx_b:+.3f},{dy_b:+.3f}) m, "
               f"dyaw {dyaw:+.3f}   gain=({gain_x:.2f},{gain_y:.2f},{gain_w:.2f})"
               f"{extra}")
 

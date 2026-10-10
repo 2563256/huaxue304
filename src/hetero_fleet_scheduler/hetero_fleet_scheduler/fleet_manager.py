@@ -155,36 +155,20 @@ class FleetManager(Node):
         # on the wall beside it (a 1.4 m offset from a marker with 0.6 m of
         # clearance is often outside the drivable area).
         self.declare_parameter("zone_slot_spacing", 1.0)
+        self.declare_parameter("zone_dispatch_clearance_m", 2.0)
         # Optional map yaml used to check a slot is on drivable floor; empty
         # falls back to maps/geomap.yaml from hetero_fleet_bringup.
         self.declare_parameter("zone_slot_map", "")
         # --- standoff / deadlock handling ---------------------------------
-        # A robot holding a navigation goal that has not got closer to that
-        # goal for this long is considered wedged. This is the situation the
-        # whole watchdog exists for: two vehicles nose to nose in the 1.2 m
-        # corridor, or one pinned on a wall by the collision monitor. Nav2's
-        # own recovery behaviours (clear costmap + spin) do not resolve either,
-        # because the blockage is a real neighbour, so the robot retries the
-        # same plan for minutes while the rest of the fleet queues up behind
-        # it. The second, sneakier case is a robot that arrives ON the goal and
-        # is never told it succeeded - it wanders around the pad forever.
-        self.declare_parameter("stall_timeout_sec", 15.0)
-        # Progress is measured as "closer to the goal", not as "moved", so this
-        # is the improvement that has to happen to count as progress.
+        # Outer watchdog uses ROS time, so slower Gazebo does not consume the
+        # navigation window. Nav2 first gets its local 15 s progress check and
+        # recovery; the scheduler intervenes after 45 s of genuine stagnation.
+        self.declare_parameter("stall_timeout_sec", 45.0)
         self.declare_parameter("stall_move_eps_m", 0.10)
-        # Yaw error counts as progress too, weighted into the same metric.
-        # Without it a robot that has reached the goal position and is turning
-        # on the spot to line up with the goal heading - exactly what the final
-        # approach to a pad looks like - shows a flat position error for the
-        # whole manoeuvre and gets "rescued" by being reversed away from a pad
-        # it had already reached. 0.30 m per radian makes a full 90 degree
-        # alignment worth 0.47 m, i.e. four times the progress threshold.
         self.declare_parameter("stall_yaw_weight", 0.30)
-        # Escape hatch for a legitimate detour: if the robot is this far from
-        # the spot where it last made progress it is genuinely driving (around
-        # the ring rather than straight at the goal), so it gets a fresh
-        # window instead of being called wedged.
-        self.declare_parameter("stall_wander_m", 1.20)
+        # Net movement for a detour, ignoring small oscillations. Near the
+        # goal rely on path / pose / heading progress instead.
+        self.declare_parameter("stall_wander_m", 0.35)
         # If the robot is this close to the goal when the stall fires, accept
         # the arrival instead of reversing. Nav2's own xy_goal_tolerance is
         # 0.15 m; 0.30 m is that plus the width of the zone markers this world
@@ -220,13 +204,13 @@ class FleetManager(Node):
         # still holding a charger bay does nothing, so the fleet simply sits in
         # the bays until work arrives again.
         self.declare_parameter("return_to_charger", True)
-        self.declare_parameter("dock_when_idle_sec", 20.0)
+        self.declare_parameter("dock_when_idle_sec", 3.0)
         # A robot that has finished a job is usually standing ON the pad it
         # just used, which is the one place it must not loiter: the next task
         # for that pad has to queue behind it, and the whole point of the zone
         # slots is to stop exactly that. So an idle robot sitting on a pickup
         # or dropoff point goes home much sooner than the general threshold.
-        self.declare_parameter("clear_task_point_sec", 5.0)
+        self.declare_parameter("clear_task_point_sec", 1.0)
         self.declare_parameter("clear_task_point_radius_m", 1.2)
         # Close enough to count as "already home", metres. Re-driving a 5 cm
         # move that the controller would spend a recovery on is wasted time.
@@ -376,6 +360,7 @@ class FleetManager(Node):
         # lives under /<name>/navigate_to_pose, so the name is fully qualified
         # rather than remapped.
         self.nav_clients: dict[str, ActionClient] = {}
+        self._nav_feedback: dict[str, dict] = {}
         for name in self.robots:
             self.nav_clients[name] = ActionClient(
                 self, NavigateToPose, f"/{name}/navigate_to_pose",
@@ -730,6 +715,24 @@ class FleetManager(Node):
         )
         self._try_assign_all()
 
+    def _pickup_ready(self, point: Pose2D, ignore_robot: str) -> bool:
+        """Keep waiting jobs off an occupied pad and its narrow exit corridor."""
+        radius = float(self.get_parameter("zone_dispatch_clearance_m").value)
+        for (x, y), claims in getattr(self, "zone_claims", {}).items():
+            if any(owner != ignore_robot for owner in claims.values()) and \
+                    math.hypot(point.x-x, point.y-y) < radius:
+                return False
+        for other in self.robots.values():
+            if other.id == ignore_robot:
+                continue
+            if other.status not in (RobotStatus.ASSIGNED, RobotStatus.TO_PICKUP,
+                    RobotStatus.LOADING, RobotStatus.TO_DROPOFF, RobotStatus.CHARGING):
+                continue
+            pose = self._live_xy(other.id)
+            if pose is not None and math.hypot(pose[0]-point.x, pose[1]-point.y) < 1.2:
+                return False
+        return True
+
     def _try_assign_all(self, count_reschedule: bool = True) -> None:
         """Greedy pass over the pending queue.
 
@@ -760,6 +763,8 @@ class FleetManager(Node):
             )
 
             assignments = []
+            dispatch_points = []
+            clearance = float(self.get_parameter("zone_dispatch_clearance_m").value)
             now = self._now()
             for tid in order:
                 task = self.tasks[tid]
@@ -783,6 +788,14 @@ class FleetManager(Node):
                             f"no robot for {task.id}: {why.explain()}"
                         )
                     continue
+
+                # Only dispatch into a free working region. Reserving in this
+                # pass closes the race before worker threads claim their pads.
+                if not self._pickup_ready(task.pickup, robot.id) or any(
+                        task.pickup.distance_to(point) < clearance
+                        for point in dispatch_points):
+                    continue
+                dispatch_points.append(task.pickup)
 
                 # Claim the robot inside the lock so the next iteration cannot
                 # pick it again.
@@ -947,6 +960,8 @@ class FleetManager(Node):
         (12.14, 3.35) while light_1 and heavy_1 tried to get past it, which is
         exactly how the three of them ended up in a mutual standoff.
 
+        Pending work whose region is occupied is not dispatchable yet: wait
+        at the charging bay instead of blocking a completed dropoff.
         A robot with nothing it can serve should get out of the way; whether
         some OTHER robot still has a job is not its problem.
         """
@@ -957,7 +972,7 @@ class FleetManager(Node):
                 task = self.tasks.get(tid)
                 if task is None or task.state != TaskState.PENDING:
                     continue
-                if self._can_serve(robot, task):
+                if self._can_serve(robot, task) and self._pickup_ready(task.pickup, robot.id):
                     return True
         return False
 
@@ -1003,7 +1018,7 @@ class FleetManager(Node):
                 # standing on it - re-issuing a centimetre goal is how a robot
                 # spends a whole recovery cycle going nowhere.
                 return
-            if not self.return_to_charger or self._work_remains():
+            if not self.return_to_charger or self._work_for(robot):
                 # Work arrived between the tick that decided to dock and this
                 # thread starting. Stay put and take it.
                 return
@@ -1071,7 +1086,15 @@ class FleetManager(Node):
         if not client.wait_for_server(timeout_sec=10.0):
             return None, "unavailable"
 
-        send_future = client.send_goal_async(self._make_goal(target))
+        # A fresh record per action prevents late feedback from a preempted
+        # goal being mistaken for progress on its replacement.
+        record = {}
+        self._nav_feedback[robot.id] = record
+        def on_feedback(message):
+            record["remaining"] = float(message.feedback.distance_remaining)
+            record["stamp"] = self._now()
+        send_future = client.send_goal_async(
+            self._make_goal(target), feedback_callback=on_feedback)
         deadline = time.time() + 30.0
         while not send_future.done() and time.time() < deadline:
             time.sleep(0.05)
@@ -1085,6 +1108,16 @@ class FleetManager(Node):
             return None, "rejected"
         return handle, None
 
+    def _cancel_navigation(self, handle) -> None:
+        """Acknowledge cancellation before issuing a competing navigation goal."""
+        try:
+            future = handle.cancel_goal_async()
+            deadline = time.monotonic() + 2.0
+            while not future.done() and time.monotonic() < deadline:
+                time.sleep(0.02)
+        except Exception as exc:
+            self.get_logger().warn(f"navigation cancellation failed: {exc}")
+
     def _wait_for_result(self, robot: RobotState, target: Pose2D, result_future):
         """Block until the goal finishes, or until the robot stops converging.
 
@@ -1096,31 +1129,24 @@ class FleetManager(Node):
         blocked plan until the action server gives up minutes later, with the
         rest of the fleet queued behind it.
 
-        Progress is measured as *getting closer to the goal*, from the
-        odometry-relayed ground truth. The obvious alternative - "has it moved
-        more than X in the last T seconds" - was tried and is not good enough:
-        a robot that arrives on the goal and then spends ten minutes
-        oscillating around the pad, waiting for a navigation stack that never
-        declares success, is moving by that measure and gets left alone. On the
-        measured runs that single case cost one vehicle ~600 s on one leg.
-
-        `stall_wander_m` keeps the strictness from misfiring on a legitimate
-        detour: a robot that is a long way from where it last made progress is
-        driving around the ring rather than stuck, and simply gets a new
-        window.
-
-        The error that is watched is position PLUS heading (see
-        stall_yaw_weight), because the last metre of a docking manoeuvre is
-        mostly rotation: a detector that only looks at x/y calls a robot that
-        is lining itself up "wedged" and reverses it off the pad.
+        Use simulation time and action feedback distance along the route, so
+        a detour that temporarily increases Euclidean distance is not cancelled.
+        Net displacement away from the final metre also counts as progress.
+        Near the goal retain position / yaw progress to reject oscillations.
+        A bounded leg budget prevents endless circling. Nav2 gets its own local
+        recovery window before this outer watchdog intervenes.
         """
         anchor = self._live_xy(robot.id)
         best = None
+        best_path = None
         last_distance = float("inf")
         if anchor is not None:
             best = self._goal_error(anchor, target)
             last_distance = math.hypot(anchor[0] - target.x, anchor[1] - target.y)
-        last_progress = time.time()
+        started = last_progress = self._now()
+        # Bound a leg even if a moving robot keeps wandering. This is simulation
+        # time, so a slow / paused Gazebo does not consume the navigation budget.
+        leg_budget = max(180.0, 60.0 + last_distance / 0.10)
 
         while not result_future.done():
             time.sleep(0.1)
@@ -1129,15 +1155,36 @@ class FleetManager(Node):
             xy = self._live_xy(robot.id)
             if xy is None:
                 continue
+            now = self._now()
+            if now < started or now < last_progress:
+                started = last_progress = now
+                best_path = None
             distance = math.hypot(xy[0] - target.x, xy[1] - target.y)
             last_distance = distance
             error = self._goal_error(xy, target)
-            if best is None or best - error > self.stall_move_eps_m:
-                best, anchor, last_progress = error, xy, time.time()
-            elif math.hypot(xy[0] - anchor[0], xy[1] - anchor[1]) \
-                    > self.stall_wander_m:
-                anchor, last_progress = xy, time.time()
-            elif time.time() - last_progress > self.stall_timeout_sec:
+            feedback = getattr(self, "_nav_feedback", {}).get(robot.id, {})
+            remaining = feedback.get("remaining")
+            fresh = now - feedback.get("stamp", -float("inf")) < 2.0
+            path_progress = False
+            if fresh and remaining is not None and math.isfinite(remaining) and remaining > 0.0:
+                if best_path is None:
+                    best_path = remaining
+                elif best_path - remaining > self.stall_move_eps_m:
+                    best_path = remaining
+                    path_progress = True
+                elif remaining - best_path > 0.5:
+                    # A replan can lengthen the route. Reset its distance baseline
+                    # without granting extra time unless the robot really moves.
+                    best_path = remaining
+            moved = anchor is not None and math.hypot(
+                xy[0] - anchor[0], xy[1] - anchor[1]) > self.stall_wander_m
+            if best is None or best - error > self.stall_move_eps_m or path_progress:
+                best, anchor, last_progress = error, xy, now
+            elif distance > 1.0 and moved:
+                # Net displacement, rather than accumulated wheel distance,
+                # allows a detour while rejecting small left/right oscillations.
+                anchor, last_progress = xy, now
+            if now - started > leg_budget or now - last_progress > self.stall_timeout_sec:
                 return None, True, distance
 
         result = result_future.result()
@@ -1229,10 +1276,13 @@ class FleetManager(Node):
             )
             return 0.0
         future = handle.get_result_async()
-        deadline = time.time() + self.stall_backoff_sec
-        while not future.done() and time.time() < deadline:
+        deadline = self._now() + self.stall_backoff_sec
+        while not future.done() and self._now() < deadline:
             time.sleep(0.1)
-        moved = math.hypot(tx - x, ty - y)
+        if not future.done():
+            self._cancel_navigation(handle)
+        final = self._live_xy(robot.id) or (x, y, yaw)
+        moved = math.hypot(final[0] - x, final[1] - y)
         self.get_logger().info(
             f"{robot.id}: reversing {moved:.2f} m to ({tx:.2f},{ty:.2f}) "
             f"to break the standoff"
@@ -1321,18 +1371,13 @@ class FleetManager(Node):
                     f"from the goal - recovery {recoveries}/"
                     f"{self.stall_max_recoveries}"
                 )
+                self._cancel_navigation(handle)
                 if recoveries > self.stall_max_recoveries:
                     self.get_logger().error(
                         f"{robot.id}: still wedged after "
                         f"{self.stall_max_recoveries} recoveries - failing {tag}"
                     )
                     return False, 0.0, 0.0
-                # Preempt the blocked goal before reversing, so Nav2 is not
-                # still planning against it while the reverse runs.
-                try:
-                    handle.cancel_goal_async()
-                except Exception:  # noqa: BLE001 - cancellation is best effort
-                    pass
                 extra_dist += self._back_off(robot, recoveries)
                 continue
 

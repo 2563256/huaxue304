@@ -5,9 +5,11 @@
 # python3.14 shadows /usr/bin/python3 on PATH. CMake's FindPython3 prefers
 # $CONDA_PREFIX, so it picks the conda interpreter, which does not have the
 # `empy` module that rosidl needs to generate interfaces. Pinning the
+# Conda also provides incompatible Protobuf headers/protoc, so exclude its
+# prefix and pin the system protoc for the Gazebo contact plugin. Pinning the
 # interpreter here makes `colcon build` work without any manual flags.
 {
   "build": {
-    "cmake-args": ["-DPython3_EXECUTABLE=/usr/bin/python3"]
+    "cmake-args": ["-DPython3_EXECUTABLE=/usr/bin/python3", "-DCMAKE_IGNORE_PREFIX_PATH=/home/xuzhijie/condaecho", "-DProtobuf_PROTOC_EXECUTABLE=/usr/bin/protoc"]
   }
 }

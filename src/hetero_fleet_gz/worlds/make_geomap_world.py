@@ -111,7 +111,6 @@ ZONES = [
     # tools/verify_scene.py checks every one of them (0.70-0.72 m clearance;
     # the widest robot needs 0.53 m).
     ("charger_A",  -0.30,  -0.75, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
-    ("charger_B",   1.20,  -0.95, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
     ("charger_C",   2.70,  -0.85, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
     ("charger_D",   4.20,  -0.85, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
 ]
@@ -177,8 +176,9 @@ HEAD = f"""<?xml version='1.0'?>
     </physics>
     <gravity>0 0 -9.8</gravity>
 
+    <!-- Brighter ambient light keeps the scanned colours readable in shade. -->
     <scene>
-      <ambient>0.55 0.55 0.55 1</ambient>
+      <ambient>0.80 0.80 0.80 1</ambient>
       <background>0.75 0.78 0.82 1</background>
       <shadows>true</shadows>
     </scene>
@@ -186,13 +186,13 @@ HEAD = f"""<?xml version='1.0'?>
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
       <pose>0 0 12 0 0 0</pose>
-      <diffuse>0.9 0.9 0.9 1</diffuse>
-      <specular>0.2 0.2 0.2 1</specular>
+      <diffuse>1.0 1.0 1.0 1</diffuse>
+      <specular>0.15 0.15 0.15 1</specular>
       <direction>-0.4 0.2 -0.9</direction>
     </light>
 
-    <!-- The driving surface. The scan's own floor mesh is visual-only; see
-         tools/prepare_map_mesh.py for why. -->
+    <!-- The physical driving surface coincides with the model flat_floor
+         visual at world z=0.117. The large grey visual is sunk out of sight. -->
     <model name='ground_plane'>
       <static>true</static>
       <pose>0 0 {GROUND_Z} 0 0 0</pose>
@@ -201,7 +201,7 @@ HEAD = f"""<?xml version='1.0'?>
           <geometry><plane><normal>0 0 1</normal><size>300 300</size></plane></geometry>
           <surface>
             <friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction>
-            <bounce><restitution>0.0</restitution></bounce>
+            <bounce><restitution_coefficient>0.0</restitution_coefficient></bounce>
             <contact/>
           </surface>
         </collision>
@@ -256,7 +256,7 @@ def main() -> int:
     print(f"wrote {out}")
     print(f"  map model   : model://{MODEL} (visual + box colliders from the "
           f"occupancy grid)")
-    print(f"  scan model   : z = {MAP_Z}  (floor lands at ~{MAP_Z + 0.027:.3f} m)")
+    print(f"  scan model   : z = {MAP_Z}  (flat floor lands at {GROUND_Z:.3f} m)")
     print(f"  driving plane: z = {GROUND_Z} (visual sunk {GROUND_VISUAL_DZ})")
     print(f"  zones       : {len(ZONES)} markers")
     return 0

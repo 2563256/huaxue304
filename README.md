@@ -1,6 +1,6 @@
 # hetero_fleet_geomap_ws — 异构机器人车队 Gazebo + Nav2 + 贪心调度仿真（实景扫描地图版）
 
-四台车、三种构型（`light_1` / `light_2` / `heavy_1` / `omni_1`）在一张**由点云扫描重建的
+三台车、三种构型（`light_1` / `heavy_1` / `omni_1`）在一张**由点云扫描重建的
 室内地图**上协同完成「取货 → 送货」任务：Gazebo 负责物理与传感器，每台车跑自己的一套
 Nav2，`fleet_manager` 用可解释的成本函数决定「谁去做哪个任务」。
 
@@ -35,6 +35,22 @@ Nav2，`fleet_manager` 用可解释的成本函数决定「谁去做哪个任务
 > 未验证的项目在 §13 单独列出。
 
 ---
+
+## 当前控制更新（2026-10-10）
+
+车队调整为 light_1 / heavy_1 / omni_1 各一台，omni 尺寸缩小 16.7%，移除队友靠近减速。
+所有车型按实际矩形轮廓在全局和局部代价地图中感知队友，停止指令不再被爬行逻辑覆盖。
+任务场景按预计工作时间平衡，重排顺序不应 shuffle。详见 [FLEET_CONTROL_UPDATE.md](FLEET_CONTROL_UPDATE.md)。
+
+下文旧四车运行测量属于历史数据，当前车队/控制参数以该更新与代码为准。
+
+## 当前场景更新（2026-10-10）
+
+四处凸出障碍物已按实际轮廓清除，所有障碍边缘采用 15 cm 开运算削除毛刺，
+不增加任何占用格。导航栅格、扫描视觉和 Gazebo 盒体碰撞同步更新；新增自由面积
+4.11 m²。所有机器人长、宽、高放大到此前的两倍，轮径/轮距/导航足迹同步调整。
+可行驶地面统一平整至 world z=0.117 m，采用原蓝灰色材质，环境光提高至 0.80。
+详见 [SCENE_EDITS.md](SCENE_EDITS.md)。原始扫描源保留。
 
 ## 1. 环境要求
 
@@ -158,7 +174,7 @@ ros2 run hetero_fleet_scheduler task_publisher --single \
   --pickup 10.60 -0.43 --dropoff 5.40 4.22 --priority 4 --deadline 420
 ```
 
-**方式 B：回放预设场景**（10 个任务，含 1 个故意不可完成的 200 kg）
+**方式 B：回放预设场景**（10 个可完成任务，三车型预计工作量均衡）
 
 ```bash
 ros2 run hetero_fleet_scheduler task_publisher \
@@ -169,7 +185,7 @@ ros2 run hetero_fleet_scheduler task_publisher \
 
 ```bash
 ros2 run hetero_fleet_scheduler task_publisher \
-  --scenario src/hetero_fleet_scheduler/config/tasks/mixed_20.yaml --interval 6 --shuffle
+  --scenario src/hetero_fleet_scheduler/config/tasks/mixed_20.yaml --interval 6
 ```
 
 **方式 D：直接发消息**（`id` 必须唯一）
@@ -213,7 +229,7 @@ ros2 topic echo /gz/dynamic_pose            # Gazebo 真值位姿数组（见下
 > `ros2 topic hz` 无输出。真值来源是 `/gz/dynamic_pose`（`Pose_V → TFMessage`），
 > 4 个 relay 从里面按出生点挑出自己那台车，转成 `/<ns>/odom` 和 `odom→base_footprint`。
 
-RViz（`src/hetero_fleet_bringup/rviz/fleet.rviz`）里可以看到：`/map`、TF、4 台车的
+RViz（`src/hetero_fleet_bringup/rviz/fleet.rviz`）里可以看到：`/map`、TF、3 台车的
 RobotModel、4 路激光、规划路径与代价地图，以及 `task_markers`——任务线段（颜色随状态变化）、
 任务编号/状态，以及四角固定的每车状态块（电量、载荷、当前任务；颜色与车体一致）。
 
@@ -232,7 +248,7 @@ ros2 run hetero_fleet_scheduler fleet_manager --ros-args \
 ## 6. 分层调试
 
 ```bash
-# 只起 Gazebo + 4 台车（控制器默认不启动，要显式打开）
+# 只起 Gazebo + 3 台车（控制器默认不启动，要显式打开）
 ros2 launch hetero_fleet_gz gz_sim.launch.py start_controllers:=true
 
 # 只起 Nav2（假设仿真已在跑）
@@ -330,44 +346,46 @@ hetero_fleet_geomap_ws/
 
 ## 8. 异构性体现在哪
 
-**三类机器人参数**（`robot_profiles.yaml`；四台车 = 2 light + 1 heavy + 1 omni）：
+**三类机器人参数**（`robot_profiles.yaml`；三台车 = 1 light + 1 heavy + 1 omni）：
 
 | | light_diff_amr | heavy_diff_amr | omni_mecanum_amr |
 | --- | --- | --- | --- |
-| 实例 | `light_1`, `light_2` | `heavy_1` | `omni_1` |
+| 实例 | `light_1` | `heavy_1` | `omni_1` |
 | max_speed | 0.70 m/s | **0.45 m/s** | 0.55 m/s |
-| max_accel / max_omega | 1.0 m/s² / 1.5 rad/s | 0.5 / 0.8 | 0.9 / 1.2 |
+| max_accel / max_omega | 1.0 m/s² / 1.5 rad/s | 0.5 / 0.8 | 0.5 / 1.2 |
 | payload | 20 kg | **150 kg** | 90 kg |
-| footprint（真实外形） | 0.344 × 0.271 | **0.428 × 0.322** | 0.403 × 0.353 |
+| footprint（真实外形） | 0.6888 × 0.5412 | **0.8556 × 0.6448** | 0.672 × 0.588 |
 | battery | 480 Wh | 1200 Wh | 640 Wh |
 | 运动学 | 差速 | 差速 | **mecanum（可侧移）** |
 | 能力 | `light_payload`, `narrow_aisle` | `heavy_payload` | `precise_docking`, `omnidirectional` |
 | 每米能耗 | 0.85 + 0.012·kg Wh/m | 1.80 + 0.020·kg Wh/m | 1.10 + 0.015·kg Wh/m |
 
-（这些尺寸是把原设计整体缩放后的结果，缩放系数与实测过程见 `MAP_SWAP.md` 第 3 节；
+（2026-10-10 将此前车型整体放大两倍，当前缩放系数 light=0.82、heavy=0.62、omni=0.70；
 `tools/measure_footprint.py` 能量出 URDF 的真实外接尺寸，就是这张表的来源。）
 
 **三套 Nav2 参数**（`nav2_params_{light,heavy,omni}.yaml`）：
 
 | 参数 | light | heavy | omni |
 | --- | --- | --- | --- |
-| 足迹多边形（半长 × 半宽） | 0.172 × 0.135 | **0.214 × 0.161** | 0.202 × 0.176 |
+| 足迹多边形（半长 × 半宽） | 0.3444 × 0.2706 | **0.4278 × 0.3224** | 0.336 × 0.294 |
 | `footprint_padding` | 0.06 | 0.03 | 0.02 |
-| `inflation_radius` | 0.35 | 0.35 | 0.35 |
+| `inflation_radius` | 0.60 | 0.60 | 0.60 |
 | `cost_scaling_factor` | 3.0 | 1.5 | 2.5 |
 | `vx_max` | 0.70 | **0.45** | 0.55 |
-| `vy_max`（侧移） | 0.0（禁用） | 0.0（禁用） | **0.55** |
+| `vy_max`（侧移） | 0.0（禁用） | 0.0（禁用） | **0.40** |
 | `wz_max` | 1.5 | 0.8 | 1.2 |
-| MPPI `motion_model` | DiffDrive | DiffDrive | DiffDrive（见下） |
+| MPPI `motion_model` | DiffDrive | DiffDrive | Omni |
 
 和三型差异有关的两点，容易踩：
 
-* `inflation_radius` 三型**相同（0.35）**，差异化在 footprint、`footprint_padding`、
+* `inflation_radius` 三型**相同（0.60）**，差异化在 footprint、`footprint_padding`、
   `cost_scaling_factor` 与速度上限上。旧文档里那张 0.17/0.20/0.21 的表已经不适用。
-* `omni_1` 的 MPPI 故意仍用 `DiffDrive`：在这个尺度的仿真底盘上，纯侧移指令只能实现
-  一部分，用 `Omni` 模型会让 MPPI 预测出底盘做不出的横移并反复修正。横向能力保留在
-  底盘里——`mecanum_drive_controller` 仍接受显式 `linear.y`（`cmd_vel_stamper` 负责
-  话题名与 y 符号，仿真底盘对 +y 指令是反向响应）。
+* `omni_1` 的 MPPI 使用 `Omni`。标准 X 型滚子接触方向由 Gazebo 插件固定在
+  车身坐标系，四轮旋转不会改变摩擦自由方向。侧移与直行响应约为指令值的 100%，
+  因此移除旧的 y 符号镜像；yaw 采用 0.95 增益校正。预测与速度平滑采用一致的
+  0.5 m/s² 平动加速度，减少反复横向修正。
+* 每台车自己的可执行任务队列清空后独立回充电位：任务点附近约 1 s，一般空闲约
+  3 s。其他机器人继续执行任务不会阻止返航。
 
 **谁走哪条道不是特判，而是参数的后果**：`tools/verify_scene.py` 用同一套 footprint +
 inflation 去检查每个任务点的净空，`tools/pick_zones.py` 也是在这个约束下挑点的——所以

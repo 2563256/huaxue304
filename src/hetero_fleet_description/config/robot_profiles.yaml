@@ -1,97 +1,11 @@
-# Single source of truth for what each robot type is and can do.
-#
-# Both the Nav2 parameter generator and the scheduler read this file, so the
-# "heavy AMR is slower / wider / can carry pallets" story is defined in exactly
-# one place instead of being duplicated into YAML and Python.
-#
-# SIZES. This fleet runs on a scanned indoor map (geomap_colour_noroof), not on
-# the warehouse world, and the scan's drivable area is one aisle roughly
-# 14 m x 2.5-4 m between furniture and partitions - and its narrowest usable
-# passage is only ~1.1 m. The vehicles are therefore scaled down from the
-# warehouse design by 0.31-0.42 so that robot + costmap inflation still leaves
-# lateral room in that passage (two earlier cuts, 0.45-0.61 and 0.36-0.49,
-# technically fit but left too little margin: MPPI reported "Optimizer fail to
-# compute path" in every bend and the fleet jammed on meeting another robot).
-#
-#   type     warehouse      URDF body     footprint       scale   inflation
-#   light    0.80 x 0.54    0.328 x 0.221  0.344 x 0.271   0.41    0.17
-#   omni     0.90 x 0.70    0.378 x 0.294  0.403 x 0.353   0.42    0.21
-#   heavy    1.32 x 0.86    0.409 x 0.267  0.428 x 0.322   0.31    0.20
-#
-# The "scale" column is what the .xacro files actually use (MAP_SWAP.md's table
-# still quotes 0.70 / 0.72 / 0.53 - the code wins). "URDF body" is base_length x
-# base_width; the "footprint" column is the true axis-aligned outline of ALL
-# collision geometry including the bumper, the corner guards and the drive
-# wheels, measured by
-#
-#     xacro <robot>.xacro ... | tools/measure_footprint.py
-#
-# (the wheels are the widest part: light y = +/-0.198 m). An earlier revision
-# listed 0.43 x 0.29 / 0.54 x 0.35 / 0.50 x 0.39 here, which was 15-25% smaller
-# than the bodies it was supposed to describe - Nav2 planned with an optimistic
-# footprint and tools/verify_scene.py checked clearance against the same
-# optimistic number. These are the real values now, and nav2_params_*.yaml
-# carries matching polygons.
-#
-# inflation_radius is the footprint's INSIDE radius plus ~0.03 m. Nav2 refuses
-# to activate planner_server when inflation < inscribed radius; the extra 5 cm
-# (one costmap cell) is what gives the inflation layer a usable decay ring
-# instead of a single lethal step. Going wider was rejected: it is what decides
-# how much of the ring corridor stays plannable at all (see MAP_SWAP.md 3).
-#
-# The "needs" column is what tools/pick_zones.py checks against the occupancy
-# grid: it is (inscribed radius) + (inflation_radius), i.e. how much clear
-# floor a cell must have for that robot to plan through it.
-#
-# The room is a ring corridor (see MAP_SWAP.md); its narrowest usable passage
-# is about 1.2 m, which caps the fleet at `needs <= ~0.6 m`. Each
-# inflation_radius here is therefore its own robot's inscribed radius plus a
-# small margin - enough to satisfy Nav2's hard rule (inflation >= inscribed)
-# but below the "half the largest cross-section" figure SMAC would prefer for
-# its fast path; that only costs planning time on this map, never safety, since
-# the non-circular collision checker still tests the true footprint.
-#
-# Capabilities are the vocabulary shared with Task.required_capability:
-#   light_payload      - can carry <= 20 kg parcels
-#   heavy_payload      - can carry pallets up to 150 kg
-#   narrow_aisle       - small enough to work the tight passages of this map
-#   precise_docking    - omnidirectional, can dock sideways
-#   omnidirectional    - holonomic motion
-
-# --- fleet composition ---------------------------------------------------
-# One robot per type: the smallest fleet that still exercises scheduling
-# between different capabilities.
-#
-# HOME BAYS. Every robot starts on a charger and drives back to it once the
-# fleet runs out of work (see `charger` below and dock_when_idle_sec in
-# fleet_manager). It is NOT a per-task trip: that turned every job into a
-# there-and-back deadhead. The fleet parks between runs instead, which is also
-# what keeps the corridor clear - a vehicle left standing at a dropoff point
-# used to be exactly what jammed the next task's approach.
-#
-# `charger` is therefore the authoritative home pose and `spawn` is where the
-# robot is actually created - they are kept equal on purpose. Changing one
-# without the other silently breaks the fleet: fleet_manager anchors every
-# robot's odometry at `spawn` (world = spawn + R(spawn_yaw) * odom) and
-# computes its distance to `charger`, so a mismatch shows up as a robot whose
-# reported position drifts by the offset between the two.
-#
-# The four bays are the four charger markers in the world (make_geomap_world.py
-# ZONES). There is one per robot: two robots sharing a bay would be spawned on
-# top of each other, and would both drive back to the same coordinate. All four
-# sit in a 1.5 m row against the south wall of the ring's south corridor, in
-# the same connected drivable region as the pickup/dropoff zones
-# (tools/verify_scene.py checks both claims). See make_geomap_world.py for why
-# that stretch and not the dead-end west arm.
+# Current fleet: one light, one heavy, one omni (2026-10-10).
+# Footprints are measured from collision shapes; padding mirrors Nav2.
+# Each robot has its own charger at its spawn pose, preserving odom anchors.
 fleet:
   - name: light_1
     type: light_diff_amr
     charger: [-0.30, -0.75, 0.0]    # charger_A, west end of the row
     spawn:   [-0.30, -0.75, 0.0]
-  - name: light_2
-    type: light_diff_amr
-    charger: [1.20, -0.95, 0.0]     # charger_B
-    spawn:   [1.20, -0.95, 0.0]
   - name: heavy_1
     type: heavy_diff_amr
     charger: [2.70, -0.85, 0.0]     # charger_C
@@ -113,11 +27,12 @@ robot_types:
     max_accel: 1.0              # m/s^2
     max_omega: 1.5              # rad/s
     payload_kg: 20.0
-    footprint: [0.344, 0.271]   # length x width, metres (true collision outline)
+    footprint_padding: 0.06
+    footprint: [0.6888, 0.5412]   # length x width, metres (true collision outline)
     # Mirrors the costmap inflation in hetero_fleet_bringup/config/
     # nav2_params_light.yaml - keep the two numbers equal. tools/pick_zones.py
     # uses this to decide which floor cells the robot can plan through.
-    inflation_radius: 0.35      # mirrors nav2_params_light.yaml
+    inflation_radius: 0.60      # mirrors nav2_params_light.yaml
     battery_capacity_wh: 480.0
 
     capabilities: [light_payload, narrow_aisle]
@@ -137,8 +52,9 @@ robot_types:
     max_accel: 0.5
     max_omega: 0.8
     payload_kg: 150.0
-    footprint: [0.428, 0.322]
-    inflation_radius: 0.35      # mirrors nav2_params_heavy.yaml
+    footprint_padding: 0.03
+    footprint: [0.8556, 0.6448]
+    inflation_radius: 0.60      # mirrors nav2_params_heavy.yaml
     battery_capacity_wh: 1200.0
 
     capabilities: [heavy_payload]
@@ -153,15 +69,16 @@ robot_types:
     controllers: omni_mecanum_amr_controllers.yaml
 
     max_speed: 0.55
-    max_accel: 0.9
+    max_accel: 0.5
     max_omega: 1.2
     # Kept at 90 kg so this platform can share heavy_1's work on the mixed
     # scenario. Note this does NOT unlock the tasks that *declare*
     # required_capability: heavy_payload - those are gated by the capability
     # list below, not by payload.
     payload_kg: 90.0
-    footprint: [0.403, 0.353]
-    inflation_radius: 0.35      # mirrors nav2_params_omni.yaml
+    footprint_padding: 0.02
+    footprint: [0.672, 0.588]
+    inflation_radius: 0.60      # mirrors nav2_params_omni.yaml
     battery_capacity_wh: 640.0
 
     capabilities: [precise_docking, omnidirectional]

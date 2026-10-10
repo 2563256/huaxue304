@@ -127,7 +127,7 @@ class ScriptedNav:
     def wait_for_server(self, timeout_sec=0.0):
         return True
 
-    def send_goal_async(self, goal):
+    def send_goal_async(self, goal, feedback_callback=None):
         with self._lock:
             kind = self.script.pop(0) if self.script else "drive"
         handle = FakeGoalHandle(kind, goal)
@@ -208,7 +208,7 @@ def make_manager(nav=None, return_to_charger=True, charger=(5.0, 5.0, 0.0)):
     # _apply_battery_drain reads one declared parameter; stand in for the
     # node's parameter server so these tests never need rclpy.init().
     m.get_parameter = lambda name: SimpleNamespace(
-        value={"battery_drain_per_meter_pct": 0.25}[name]
+        value={"battery_drain_per_meter_pct": 0.25, "zone_dispatch_clearance_m": 2.0}[name]
     )
     m.get_clock = lambda: SimpleNamespace(
         now=lambda: SimpleNamespace(to_msg=lambda: None)
@@ -217,6 +217,8 @@ def make_manager(nav=None, return_to_charger=True, charger=(5.0, 5.0, 0.0)):
     m.charger_pose = {"r1": Pose2D(*charger)}
     m.live_pose = {}
     m.active_goal = {}
+    m._nav_feedback = {}
+    m._now = time.monotonic
     m.pending = []
     m.tasks = {}
     m.min_battery_pct = 15.0
@@ -229,7 +231,7 @@ def make_manager(nav=None, return_to_charger=True, charger=(5.0, 5.0, 0.0)):
     m.stall_timeout_sec = 0.25
     m.stall_move_eps_m = 0.05
     m.stall_yaw_weight = 0.30
-    m.stall_wander_m = 1.20
+    m.stall_wander_m = 0.35
     m.stall_arrive_radius_m = 0.30
     m.stall_backoff_m = 0.50
     m.stall_backoff_growth = 0.6
@@ -627,7 +629,7 @@ def test_drive_home_never_leaves_a_robot_stuck_in_charging():
     m = make_manager()
 
     class ExplodingNav(ScriptedNav):
-        def send_goal_async(self, goal):
+        def send_goal_async(self, goal, feedback_callback=None):
             raise RuntimeError("nav2 died")
 
     nav = ExplodingNav(m, "r1", [], pose=(1.0, 1.0, 0.0))
@@ -637,3 +639,118 @@ def test_drive_home_never_leaves_a_robot_stuck_in_charging():
     m._drive_home(robot)                       # must not raise
     assert robot.status == RobotStatus.IDLE
     assert messages_containing("charger leg crashed")
+
+
+def test_home_worker_is_not_blocked_by_another_busy_robot():
+    m = make_manager()
+    robot = m.robots["r1"]
+    m.robots["other"] = SimpleNamespace(status=RobotStatus.TO_DROPOFF)
+    nav = ScriptedNav(m, "r1", ["drive"], pose=(1.0, 1.0, 0.0))
+    place(m, (1.0, 1.0, 0.0))
+    m.nav_clients["r1"] = nav
+    robot.status = RobotStatus.CHARGING
+    m._drive_home(robot)
+    assert nav.goals
+    assert robot.status == RobotStatus.IDLE
+
+
+def test_home_worker_takes_new_eligible_work_before_departing():
+    m = make_manager()
+    robot = m.robots["r1"]
+    robot.payload_capacity_kg = 20.0
+    task = make_task("new", 1.0)
+    m.tasks[task.id] = task
+    m.pending.append(task.id)
+    place(m, (1.0, 1.0, 0.0))
+    nav = ScriptedNav(m, "r1", [], pose=(1.0, 1.0, 0.0))
+    m.nav_clients["r1"] = nav
+    robot.status = RobotStatus.CHARGING
+    m._drive_home(robot)
+    assert not nav.goals
+    assert robot.status == RobotStatus.IDLE
+
+
+def test_route_feedback_allows_progress_away_from_euclidean_goal(monkeypatch):
+    """A curved route may get shorter while the target gets farther away."""
+    import hetero_fleet_scheduler.fleet_manager as module
+    m = make_manager()
+    m.live_pose['r1'] = (0.0, 0.0, 0.0)
+    clock = [0.0]
+    m._now = lambda: clock[0]
+    future = FakeFuture()
+    steps = [0]
+
+    def advance(_):
+        steps[0] += 1
+        clock[0] += 0.1
+        m.live_pose['r1'] = (-0.01 * steps[0], 0.0, 0.0)
+        m._nav_feedback['r1'] = {'remaining': 10.0 - .2 * steps[0],
+                                  'stamp': clock[0]}
+        if steps[0] == 12:
+            future.set_result(SimpleNamespace(status=4))
+
+    monkeypatch.setattr(module, 'time', SimpleNamespace(sleep=advance))
+    status, stalled, _ = m._wait_for_result(m.robots['r1'], Pose2D(2, 0), future)
+    assert status == 4 and not stalled
+    assert steps[0] == 12
+
+
+def test_paused_simulation_does_not_consume_watchdog_budget(monkeypatch):
+    import hetero_fleet_scheduler.fleet_manager as module
+    m = make_manager()
+    m.live_pose['r1'] = (0.0, 0.0, 0.0)
+    m._now = lambda: 100.0
+    future = FakeFuture()
+    steps = [0]
+
+    def advance(_):
+        steps[0] += 1
+        if steps[0] == 20:
+            future.set_result(SimpleNamespace(status=4))
+
+    monkeypatch.setattr(module, 'time', SimpleNamespace(sleep=advance))
+    status, stalled, _ = m._wait_for_result(m.robots['r1'], Pose2D(2, 0), future)
+    assert status == 4 and not stalled
+
+
+def test_small_oscillations_near_goal_still_trigger_watchdog(monkeypatch):
+    import hetero_fleet_scheduler.fleet_manager as module
+    m = make_manager()
+    m.live_pose['r1'] = (0.0, 0.0, 0.0)
+    clock = [0.0]
+    m._now = lambda: clock[0]
+    future = FakeFuture()
+
+    def advance(_):
+        clock[0] += .1
+        m.live_pose['r1'] = (.01 if int(clock[0] * 10) % 2 else -.01, 0, 0)
+
+    monkeypatch.setattr(module, 'time', SimpleNamespace(sleep=advance))
+    status, stalled, _ = m._wait_for_result(m.robots['r1'], Pose2D(.7, 0), future)
+    assert status is None and stalled
+    assert clock[0] < 1.0
+
+
+def test_dispatch_waits_for_a_neighboring_dropoff_exit():
+    m=make_manager()
+    m.zone_claims={(11.0,4.0):{0:'other'}}
+    assert not m._pickup_ready(Pose2D(9.1,4.22), 'r1')
+    m.zone_claims.clear()
+    assert m._pickup_ready(Pose2D(9.1,4.22), 'r1')
+
+
+def test_dispatch_waits_until_departing_vehicle_clears_pad():
+    m=make_manager()
+    m.zone_claims={}
+    m.robots['other']=RobotState(id='other', type='light_diff_amr',
+        pose=Pose2D(9.8,4.22), status=RobotStatus.TO_DROPOFF)
+    m.live_pose['other']=(9.8,4.22,0)
+    assert not m._pickup_ready(Pose2D(9.1,4.22), 'r1')
+    m.live_pose['other']=(10.4,4.22,0)
+    assert m._pickup_ready(Pose2D(9.1,4.22), 'r1')
+
+
+def test_dispatch_allows_a_different_zone_and_own_reservation():
+    m=make_manager()
+    m.zone_claims={(9.0,4.0):{0:'other'}, (1.5,4.0):{0:'r1'}}
+    assert m._pickup_ready(Pose2D(1.7,4.22), 'r1')

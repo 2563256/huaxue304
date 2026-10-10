@@ -1,7 +1,9 @@
 # RUNBOOK —— 换地图后的运行指令
 
+> 当前三台车：light_1 / heavy_1 / omni_1。omni 缩小，减速机制移除，任务均衡调整见 `FLEET_CONTROL_UPDATE.md`。地图修改见 `SCENE_EDITS.md`。
+
 这份工作空间 = 原来的 `hetero_fleet_ws`（仓库地图）换成了点云扫描地图
-`geomap_final_noroof`，车队 **4 台**（light_1 / light_2 / heavy_1 / omni_1，三种构型）。
+`geomap_final_noroof`，车队 **3 台**（light_1 / heavy_1 / omni_1，三种构型）。
 地图是怎么处理、尺寸怎么定的，见 [`MAP_SWAP.md`](MAP_SWAP.md)
 （那是换图当时的历史记录，部分数字已被后续调整覆盖；**当前状态以 [`README.md`](README.md) 为准**）。
 
@@ -15,8 +17,8 @@ cd /home/xuzhijie/hetero_fleet_geomap_ws
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 
-# 4 台车 = 4 套 Nav2 ≈ 100+ 个 ROS 节点。下面两个变量是**本机建议**：
-# 2026-09-24 实测里不加也能完整启动（4 套 Nav2 全部 active、任务正常派发），
+# 3 台车 = 3 套 Nav2 ≈ 100+ 个 ROS 节点。下面两个变量是**本机建议**：
+# 2026-09-24 实测里不加也能完整启动（3 套 Nav2 全部 active、任务正常派发），
 # 但如果同时有别的 ROS 程序在 domain 0 上发 /tf，会出现大量 TF_OLD_DATA、
 # bt_navigator 报 "Initial robot pose is not available"、目标 0.15 s 内 ABORT
 # 这类成批失败 —— 那时再加上它们：
@@ -49,7 +51,7 @@ source install/setup.bash
 ## 2. 启动
 
 ```bash
-# 全栈：Gazebo GUI + RViz + 4 套 Nav2 + fleet_manager
+# 全栈：Gazebo GUI + RViz + 3 套 Nav2 + fleet_manager
 ros2 launch hetero_fleet_bringup bringup.launch.py
 
 # 省资源模式（长跑建议）
@@ -62,11 +64,11 @@ ros2 launch hetero_fleet_bringup bringup.launch.py scheduler:=false
 ros2 launch hetero_fleet_gz gz_sim.launch.py
 ```
 
-发任务前先确认 Nav2 已就绪（**4 套栈**，每套错开 30 s，全部 active 约需 150 秒）：
+发任务前先确认 Nav2 已就绪（**3 套栈**，每套错开 30 s，全部 active 约需 150 秒）：
 
 ```bash
 ros2 lifecycle get /light_1/bt_navigator        # 期望 active [3]
-ros2 action list | grep navigate_to_pose        # 期望 4 条
+ros2 action list | grep navigate_to_pose        # 期望 3 条
 ```
 
 否则会出现 `goal rejected`，任务会被重排队。
@@ -83,7 +85,7 @@ ros2 action list | grep navigate_to_pose        # 期望 4 条
   发生在这里：有车在那儿作业就封了通道，南北往返必须跟它正面相遇，然后僵住。
   已挪到北侧走廊东端 (11.0, 4.22)，连接段空出来。
 
-**四个充电位在南侧走廊贴南墙排成一排**（间距 1.5 m，都朝东），在 x≈5.5~6.8 那个
+**三个充电位在南侧走廊贴南墙排开**（间距 1.5 m，都朝东），在 x≈5.5~6.8 那个
 最窄处**西边**：那段走廊有 2.2~2.4 m 宽，停一列车之后上方还留 ≥1.0 m 的通行道，
 所以不挡路；而且每台车能直接往东/往西拐出来，不用倒着从一排车后面挪出来
 （原来那种首尾相接的摆法就有这个问题）。东段南墙能排开车的地方只有 3.2 m，只放得下
@@ -98,13 +100,12 @@ ros2 action list | grep navigate_to_pose        # 期望 4 条
 | dropoff_B | ( 5.40, 4.22) | 0.95 |
 | dropoff_C | (11.00, 4.22) | 0.97 |
 | charger_A | (-0.30,-0.75) | 0.72 |
-| charger_B | ( 1.20,-0.95) | 0.70 |
 | charger_C | ( 2.70,-0.85) | 0.70 |
 | charger_D | ( 4.20,-0.85) | 0.70 |
 
-这些坐标全部经过 `tools/verify_scene.py` 校验：在自由格上、净空足够四种机型
-（最宽的 omni 需要 0.53 m）、且落在同一个连通的可行驶区域里。四个充电位相邻间距
-1.50 m。
+这些坐标全部经过 `tools/verify_scene.py` 校验：在自由格上、净空足够三种机型
+（heavy 的校验半径最大，约 0.61 m），各车型的出生点和任务点均在可连通区域内。
+三个充电位分别位于 x=-0.30、2.70、4.20 m。
 
 **出生点 = 充电位**，一车一位（`robot_profiles.yaml` 里每台车同时写了
 `spawn` 和 `charger`，两个值必须一致）：
@@ -112,7 +113,6 @@ ros2 action list | grep navigate_to_pose        # 期望 4 条
 | 机器人 | 充电位 |
 | --- | --- |
 | light_1 | charger_A (-0.30,-0.75) 排头（西端） |
-| light_2 | charger_B ( 1.20,-0.95) |
 | heavy_1 | charger_C ( 2.70,-0.85) |
 | omni_1 | charger_D ( 4.20,-0.85) 排尾（东端） |
 
@@ -126,26 +126,26 @@ ros2 action list | grep navigate_to_pose        # 期望 4 条
 # A. 单条（pickup_A -> dropoff_C，走廊全长）
 ros2 run hetero_fleet_scheduler task_publisher --single \
   --capability light_payload --payload 12 \
-  --pickup 4.00 -0.50 --dropoff 11.79 0.50 --priority 2 --deadline 900
+  --pickup 10.60 -0.43 --dropoff 11.00 4.22 --priority 2 --deadline 900
 
-# B. 预设 10 任务场景（含 1 条故意不可完成的任务）
+# B. 预设 10 任务场景（按三车型工作时间平衡，全部可完成）
 ros2 run hetero_fleet_scheduler task_publisher \
   --scenario src/hetero_fleet_scheduler/config/tasks/demo_10.yaml --interval 8
 
 # C. 20 任务统计场景
 ros2 run hetero_fleet_scheduler task_publisher \
-  --scenario src/hetero_fleet_scheduler/config/tasks/mixed_20.yaml --interval 6 --shuffle
+  --scenario src/hetero_fleet_scheduler/config/tasks/mixed_20.yaml --interval 6
 
 # D. 直接 pub（id 必须唯一）
 ros2 topic pub --once /task_request hetero_fleet_msgs/msg/Task \
-"{id: 'adhoc_1', type: 'transport', pickup: {x: 4.00, y: -0.50}, dropoff: {x: 11.79, y: 0.50}, payload_kg: 12.0, required_capability: 'light_payload', priority: 2, deadline_sec: 600.0}"
+"{id: 'adhoc_1', type: 'transport', pickup: {x: 10.60, y: -0.43}, dropoff: {x: 11.00, y: 4.22}, payload_kg: 12.0, required_capability: 'light_payload', priority: 2, deadline_sec: 600.0}"
 ```
 
 字段约定：
 
 * `required_capability`：`light_payload` | `heavy_payload` | `narrow_aisle` |
   `precise_docking` | `omnidirectional` | `""`（空 = 不限）
-* 车队（4 台）：`light_1` / `light_2` 各 20 kg & 0.70 m/s；`heavy_1` 150 kg & 0.45 m/s；
+* 车队（3 台）：`light_1` 20 kg & 0.70 m/s；`heavy_1` 150 kg & 0.45 m/s；
   `omni_1` 90 kg & 0.55 m/s（麦轮，可横移）
 * 任务 `id` 重复会被忽略（日志出现 `duplicate task id`）
 
@@ -264,9 +264,9 @@ ros2 run hetero_fleet_scheduler fleet_manager --ros-args \
   -p status_panel_text_height:=0.6
 ```
 
-面板默认布局：四台车各占矩形一个角，再往矩形中心内缩 `status_panel_inset_m`
+面板默认布局：三台车分配矩形的角位，再往矩形中心内缩 `status_panel_inset_m`
 （默认 2.6 m）——直接钉在角上会落在未扫描的黑色区域里，和地图完全脱开。
-这个矩形默认贴着地图边界（x -11.0~14.4，y -3.0~6.9），所以四个块都在地图内、
+这个矩形默认贴着地图边界（x -11.0~14.4，y -3.0~6.9），所以三个块都在地图内、
 且离最近的任务点 2.1~7.5 m，不会压住机器人正在作业的托盘。要单独挪某一块：
 
 ```bash
@@ -327,7 +327,7 @@ FastRTPS 残留的 `/dev/shm` 段，并打印还剩几个进程（期望 `0` 和
 | --- | --- |
 | Gazebo 里没有地图（只有灰地面） | `GZ_SIM_RESOURCE_PATH` 是否含 `install/hetero_fleet_gz/share`（未编译过 `models/` 也会这样） |
 | 地图渲染成纯白 | 是否带上 `--render-engine ogre`（`gz_sim.launch.py` 已默认加；本机 ogre2 不认网格材质） |
-| 机器人执行任务时长时间杵在原地 | 多半是**互相锁死**：局部代价地图把队友（`scan_frame_relay` 注入的 `robot_obstacles`）膨胀成一大片致命格，MPPI 找不到可行轨迹（日志 `Optimizer reset`），两队谁都不让谁。已按 4 台车调过：队友障碍改用**内切半径**而不是外接半径、碰撞监控改成"提前减速 + 近身才停"（stop 多边形 ~0.3 m）、MPPI `collision_margin_distance` 0.1→0.05。实测静止时间从 90~100 s/150 s 降到 0~21 s |
+| 机器人执行任务时长时间杵在原地 | 检查动态队友障碍层是否接收 robot_obstacles、旧位置是否清除，以及 collision_monitor 是否紧急停车。当前使用真实矩形轮廓、全局/局部动态障碍层和方向停车区，已移除靠近减速；详见 FLEET_CONTROL_UPDATE.md。 |
 | 车完全不动 | `ros2 lifecycle get /<robot>/controller_server` 是否 active；`ros2 control list_controllers -c /<robot>/controller_manager` 里驱动控制器和 joint_state_broadcaster 是否都 active（启动竞态会让 spawner 失败 → 重启） |
 | 车直走正常、原地转不动 | 世界里的引擎必须是 `gz-physics-dartsim-plugin`（`grep engine src/hetero_fleet_gz/worlds/geomap_fleet.sdf`）。Bullet 在本机转不了，见 `MAP_SWAP.md` 6.0 |
 | spawner 报 `Controller already loaded` + `Failed to configure controller` | 同时存在两个 `gz sim` 实例（`ps -eo comm | grep -c '^ruby$'` 应等于 1），先按第 7 节清理再启动 |
@@ -354,3 +354,6 @@ FastRTPS 残留的 `/dev/shm` 段，并打印还剩几个进程（期望 `0` 和
 
 换地图过程中新踩的坑记在 `MAP_SWAP.md`（倾斜地板、竖直面俯视投影退化、俯视投影把
 头顶结构也算成障碍、以及 y 轴坐标镜像的换算错误）。
+
+
+> 旧故障记录中的“四车内切圆、提前减速、200 kg 示例”已被本次控制更新覆盖，详见 `FLEET_CONTROL_UPDATE.md`。

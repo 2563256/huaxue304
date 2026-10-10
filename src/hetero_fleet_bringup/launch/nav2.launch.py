@@ -64,6 +64,7 @@ def render_params(src_path, robot_name, dst_dir, kind):
     with open(src_path) as f:
         text = f.read()
     text = text.replace("<robot_name>", robot_name)
+    text = text.replace("<bringup_share>", get_package_share_directory("hetero_fleet_bringup"))
     body = yaml.safe_load(text)
 
     # Re-key every top-level section as /<robot_name>/<section>.
@@ -364,17 +365,9 @@ def launch_setup(context, *args, **kwargs):
                                 # the smoother, so the safety layer is really
                                 # in the chain.
                                 "input_topic": f"/{name}/cmd_vel",
-                                # The simulated mecanum base answers a +y
-                                # command with -y motion, so the stamper flips
-                                # linear.y on the way to the controller. See
-                                # the roller-orientation note in
-                                # omni_mecanum_amr.xacro: swapping the roller
-                                # diagonals does not remove this, it only
-                                # halves the strafe gain.
-                                "mirror_y": (
-                                    True if rtype["kinematics"] == "mecanum"
-                                    else False
-                                ),
+                                # Physical X-arranged passive rollers use the standard twist signs.
+                                "angular_z_scale": 0.95 if rtype["kinematics"] == "mecanum" else 1.0,
+                                "mirror_y": False,
                             }
                         ],
                     )
