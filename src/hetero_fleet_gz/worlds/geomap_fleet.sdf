@@ -23,7 +23,7 @@
            -> make_geomap_world.py -->
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics">
       <engine><filename>gz-physics-dartsim-plugin</filename></engine>
-      <max_step_size>0.0025</max_step_size>
+      <max_step_size>0.001</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </plugin>
     <plugin filename="gz-sim-user-commands-system"
@@ -43,19 +43,11 @@
     </plugin>
     <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
 
-    <!-- 2.5 ms steps (400 Hz), not the usual 1 ms.
-
-         DART has to test every robot shape against ~1.6k map colliders on
-         every step, and at 1 ms that costs enough to hold the whole simulation
-         at ~0.35x real time (measured: window RTF 0.34 with the boxes, 1.00
-         without). Nothing here needs 1 kHz - the fastest thing on the map is a
-         0.066 m wheel turning at 4.5 rad/s (0.011 rad per 2.5 ms step) and the
-         controllers only run at 100 Hz. 400 Hz physics keeps every controller
-         fed and brings the window RTF back to ~1. -->
-    <physics name='2p5ms' type='ignored'>
-      <max_step_size>0.0025</max_step_size>
+    <!-- 1 ms steps keep the scaled G1 ankle torque controller stable. -->
+    <physics name='g1_1ms' type='ignored'>
+      <max_step_size>0.001</max_step_size>
       <real_time_factor>1</real_time_factor>
-      <real_time_update_rate>400</real_time_update_rate>
+      <real_time_update_rate>1000</real_time_update_rate>
     </physics>
     <gravity>0 0 -9.8</gravity>
 
@@ -247,6 +239,86 @@
           <pose>0 0 0.05 0 0 0</pose>
           <geometry><box><size>0.5 0.5 0.08</size></box></geometry>
           <material><ambient>0.95 0.80 0.10 0.55</ambient><diffuse>0.95 0.80 0.10 0.55</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='zone_charger_B'>
+      <static>true</static>
+      <pose>1.2 -0.8 0.147 0 0 0</pose>
+      <link name='pad'>
+        <visual name='pad_visual'>
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.5 0.5 0.02</size></box></geometry>
+          <material><ambient>0.25 0.90 0.65 0.55</ambient><diffuse>0.25 0.90 0.65 0.55</diffuse></material>
+        </visual>
+        <visual name='rim_visual'>
+          <pose>0 0 0.05 0 0 0</pose>
+          <geometry><box><size>0.5 0.5 0.08</size></box></geometry>
+          <material><ambient>0.25 0.90 0.65 0.55</ambient><diffuse>0.25 0.90 0.65 0.55</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='zone_pickup_D'>
+      <static>true</static>
+      <pose>-2.0 4.22 0.147 0 0 0</pose>
+      <link name='pad'>
+        <visual name='pad_visual'>
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.02</size></box></geometry>
+          <material><ambient>0.10 0.85 0.20 0.55</ambient><diffuse>0.10 0.85 0.20 0.55</diffuse></material>
+        </visual>
+        <visual name='rim_visual'>
+          <pose>0 0 0.05 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.08</size></box></geometry>
+          <material><ambient>0.10 0.85 0.20 0.55</ambient><diffuse>0.10 0.85 0.20 0.55</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='zone_pickup_E'>
+      <static>true</static>
+      <pose>5.8 0.05 0.147 0 0 0</pose>
+      <link name='pad'>
+        <visual name='pad_visual'>
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.02</size></box></geometry>
+          <material><ambient>0.10 0.85 0.20 0.55</ambient><diffuse>0.10 0.85 0.20 0.55</diffuse></material>
+        </visual>
+        <visual name='rim_visual'>
+          <pose>0 0 0.05 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.08</size></box></geometry>
+          <material><ambient>0.10 0.85 0.20 0.55</ambient><diffuse>0.10 0.85 0.20 0.55</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='zone_dropoff_D'>
+      <static>true</static>
+      <pose>7.0 4.22 0.147 0 0 0</pose>
+      <link name='pad'>
+        <visual name='pad_visual'>
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.02</size></box></geometry>
+          <material><ambient>0.15 0.35 0.90 0.55</ambient><diffuse>0.15 0.35 0.90 0.55</diffuse></material>
+        </visual>
+        <visual name='rim_visual'>
+          <pose>0 0 0.05 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.08</size></box></geometry>
+          <material><ambient>0.15 0.35 0.90 0.55</ambient><diffuse>0.15 0.35 0.90 0.55</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name='zone_dropoff_E'>
+      <static>true</static>
+      <pose>0.0 4.1 0.147 0 0 0</pose>
+      <link name='pad'>
+        <visual name='pad_visual'>
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.02</size></box></geometry>
+          <material><ambient>0.15 0.35 0.90 0.55</ambient><diffuse>0.15 0.35 0.90 0.55</diffuse></material>
+        </visual>
+        <visual name='rim_visual'>
+          <pose>0 0 0.05 0 0 0</pose>
+          <geometry><box><size>0.6 0.6 0.08</size></box></geometry>
+          <material><ambient>0.15 0.35 0.90 0.55</ambient><diffuse>0.15 0.35 0.90 0.55</diffuse></material>
         </visual>
       </link>
     </model>

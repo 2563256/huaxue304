@@ -2,7 +2,7 @@
 # aggregated by the scheduler into FleetStatus.
 
 string   id                       # namespace / robot id, e.g. "light_1"
-string   type                     # light_diff_amr | heavy_diff_amr | omni_mecanum_amr
+string   type                     # light_diff_amr | heavy_diff_amr | omni_mecanum_amr | g1_humanoid
 
 geometry_msgs/Pose2D pose         # current pose in the map frame
 string   status                   # IDLE|ASSIGNED|TO_PICKUP|LOADING|TO_DROPOFF|CHARGING|FAILED

@@ -1,57 +1,50 @@
-
-<!-- Reuse a valid path for up to 15 seconds. Check validity / goal changes
-     at 1 Hz; compute only on expiry, a changed goal, or an invalid path.
-     Existing planning, control and system recovery actions are preserved. -->
+<!-- Stable dynamic-traffic planning: no expiry, ROS-time debounce and cooldown. -->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateWithReplanning">
-        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
-        <RateController hz="1.0">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector" />
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector" />
+        <RateController hz="0.5">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <Fallback name="ReuseValidGlobalPath">
-              <ReactiveSequence>
-                <Inverter>
-                  <PathExpiringTimer seconds="15.0" path="{path}"/>
-                </Inverter>
-                <Inverter>
-                  <GlobalUpdatedGoal/>
-                </Inverter>
-                <IsPathValid path="{path}"/>
-              </ReactiveSequence>
-              <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+            <Fallback name="StableGlobalRoute">
+              <Sequence name="ChangedGoal">
+                <GlobalUpdatedGoal goal="{goal}" />
+                <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}" />
+              </Sequence>
+              <StableReplan path="{path}" blocked_duration="5.0" min_interval="15.0">
+                <IsPathValid path="{path}" server_timeout="{server_timeout}" />
+                <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}" />
+              </StableReplan>
             </Fallback>
             <Sequence>
-              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
-              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}" />
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap" />
             </Sequence>
           </RecoveryNode>
         </RateController>
         <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}" />
           <Sequence>
-            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
-            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}" />
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap" />
           </Sequence>
         </RecoveryNode>
       </PipelineSequence>
       <Sequence>
         <Fallback>
-          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
-          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}" />
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}" />
         </Fallback>
         <ReactiveFallback name="RecoveryFallback">
-          <GoalUpdated/>
+          <GoalUpdated />
           <RoundRobin name="RecoveryActions">
             <Sequence name="ClearingActions">
-              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
-              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap" />
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap" />
             </Sequence>
-            <Wait wait_duration="2.0"/>
-            <BackUp backup_dist="0.20" backup_speed="0.12" error_code_id="{short_backup_error}"/>
-            <Spin spin_dist="0.78" error_code_id="{spin_error_code}"/>
-            <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_code_id}"/>
+            <Wait wait_duration="5.0" />
+            <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_code_id}" />
           </RoundRobin>
         </ReactiveFallback>
       </Sequence>

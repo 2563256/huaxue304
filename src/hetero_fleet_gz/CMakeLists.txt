@@ -2,19 +2,38 @@ cmake_minimum_required(VERSION 3.8)
 project(hetero_fleet_gz)
 
 find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(gz-sim8 REQUIRED)
 find_package(gz-physics7 REQUIRED)
 find_package(gz-plugin2 REQUIRED COMPONENTS register)
 add_library(hetero_mecanum_contacts SHARED src/mecanum_contacts.cpp)
 target_compile_features(hetero_mecanum_contacts PRIVATE cxx_std_17)
 target_link_libraries(hetero_mecanum_contacts PRIVATE gz-sim8::gz-sim8 gz-physics7::gz-physics7 gz-plugin2::register)
-install(TARGETS hetero_mecanum_contacts LIBRARY DESTINATION lib)
+add_library(hetero_g1_locomotion SHARED src/g1_locomotion.cpp)
+target_compile_features(hetero_g1_locomotion PRIVATE cxx_std_17)
+target_link_libraries(hetero_g1_locomotion gz-sim8::gz-sim8 gz-plugin2::register Eigen3::Eigen)
+ament_target_dependencies(hetero_g1_locomotion rclcpp geometry_msgs sensor_msgs std_msgs)
+install(TARGETS hetero_mecanum_contacts hetero_g1_locomotion LIBRARY DESTINATION lib)
 ament_export_libraries(hetero_mecanum_contacts)
 
 # `models` ships the converted scan (geomap_colour_noroof) that the world
 # includes through model:// - Gazebo resolves that against GZ_SIM_RESOURCE_PATH,
 # which gz_sim.launch.py points at this share directory.
-install(DIRECTORY worlds launch models
+install(DIRECTORY worlds launch models policies
         DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  enable_testing()
+  add_executable(g1_policy_test test/g1_policy_test.cpp)
+  target_compile_features(g1_policy_test PRIVATE cxx_std_17)
+  target_link_libraries(g1_policy_test PRIVATE Eigen3::Eigen)
+  add_test(NAME g1_policy_reference COMMAND g1_policy_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/policies/g1/motion.bin
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/g1_policy_reference.txt)
+endif()
 
 ament_package()

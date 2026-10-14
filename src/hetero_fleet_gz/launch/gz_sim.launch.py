@@ -154,9 +154,9 @@ def launch_setup(context, *args, **kwargs):
         xacro_path = os.path.join(desc_share, "urdf", rtype["urdf"])
 
         # Render this instance's controller config.
-        xml_path = render_controllers(
+        xml_path = (render_controllers(
             desc_share, name, rtype["controllers"], controllers_dir
-        )
+        ) if rtype["kinematics"] != "legged" else "")
 
         robot_desc = Command(
             [
@@ -210,7 +210,7 @@ def launch_setup(context, *args, **kwargs):
                 # on a bumper/guard edge, where the wheels spin without
                 # traction and the vehicle will not yaw. A short drop lets them
                 # settle straight onto wheels + caster.
-                "-x", str(sx), "-y", str(sy), "-z", "0.05",
+                "-x", str(sx), "-y", str(sy), "-z", str(robot.get("spawn_z", 0.05)),
                 "-Y", str(syaw),
             ],
         )
@@ -259,6 +259,9 @@ def controller_spawners(desc_share, stagger: float = 2.0) -> list:
     for robot in profiles["fleet"]:
         name = robot["name"]
         rtype = types[robot["type"]]
+        if rtype["kinematics"] == "legged":
+            # G1 plugin owns leg torques and joint states; no wheel controllers.
+            continue
         ctrl_name = (
             "diff_drive_controller"
             if rtype["kinematics"] == "diff"

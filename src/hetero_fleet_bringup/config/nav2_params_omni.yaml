@@ -24,7 +24,7 @@ amcl:
 bt_navigator:
   ros__parameters:
     use_sim_time: true
-    default_nav_to_pose_bt_xml: <bringup_share>/config/omni_navigation.xml
+    default_nav_to_pose_bt_xml: <bringup_share>/config/fleet_navigation.xml
     global_frame: map
     robot_base_frame: <robot_name>/base_footprint
     odom_topic: /<robot_name>/odom
@@ -32,7 +32,8 @@ bt_navigator:
     # Raised from the Nav2 default of 20 ms; see the note in
     # nav2_params_light.yaml - under this machine's load the ACK can miss the
     # default window and abort the goal.
-    default_server_timeout: 300
+    plugin_lib_names: ["hetero_stable_route_bt"]
+    default_server_timeout: 2000
 
 controller_server:
   ros__parameters:
@@ -245,9 +246,9 @@ global_costmap:
       always_send_full_costmap: true
       resolution: 0.05
       track_unknown_space: true
-      # The known scene comes from the static map. Passing traffic remains
-      # in the local lidar / exact-body layers and collision monitor. Only
-      # long stationary vehicles enter global planning, preventing loop flips.
+      # The static map describes the scene; exact teammate bodies (including
+      # moving robots) enter global planning. The BT reuses a valid path
+      # and replans when an obstacle invalidates it.
       plugins: ["static_layer", "robot_obstacle_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
@@ -293,7 +294,7 @@ planner_server:
   ros__parameters:
     use_sim_time: true
     # Expected computation cadence only; the BT controls replanning triggers.
-    expected_planner_frequency: 0.0666667
+    expected_planner_frequency: 0.5
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_smac_planner::SmacPlanner2D"

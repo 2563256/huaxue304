@@ -1,4 +1,4 @@
-# Current fleet: one light, one heavy, one omni (2026-10-10).
+# Current fleet: light, heavy, omni and G1 biped (2026-10-10).
 # Footprints are measured from collision shapes; padding mirrors Nav2.
 # Each robot has its own charger at its spawn pose, preserving odom anchors.
 fleet:
@@ -6,14 +6,25 @@ fleet:
     type: light_diff_amr
     charger: [-0.30, -0.75, 0.0]    # charger_A, west end of the row
     spawn:   [-0.30, -0.75, 0.0]
+    charger_exit: [-0.30, 0.20, 1.57079632679]
   - name: heavy_1
     type: heavy_diff_amr
     charger: [2.70, -0.85, 0.0]     # charger_C
     spawn:   [2.70, -0.85, 0.0]
+    charger_exit: [2.70, 0.20, 1.57079632679]
   - name: omni_1
     type: omni_mecanum_amr
     charger: [4.20, -0.85, 0.0]     # charger_D, east end of the row
     spawn:   [4.20, -0.85, 0.0]
+    charger_exit: [4.20, 0.20, 1.57079632679]
+
+  - name: g1_1
+    type: g1_humanoid
+    charger: [1.20, -0.80, 0.0]   # restored charger_B
+    spawn: [1.20, -0.80, 0.0]
+    charger_exit: [1.20, 0.20, 1.57079632679]
+    charger_route: [[3.8, 0.2, 3.14159265359], [1.2, 0.2, -1.57079632679]]
+    spawn_z: 0.127               # 1 cm above the z=0.117 physical floor
 
 robot_types:
 
@@ -85,6 +96,29 @@ robot_types:
 
     wh_per_meter_empty: 1.10
     wh_per_meter_kg: 0.015
+
+  # G1 scale 0.90; twelve physical leg actuators, fixed upper-body training pose.
+  g1_humanoid:
+    description: G1 biped humanoid with physical leg torque control and native Unitree
+      LSTM policy
+    kinematics: legged
+    urdf: g1_humanoid.xacro
+    controllers: ''
+    max_speed: 0.4
+    max_accel: 0.35
+    max_omega: 0.65
+    payload_kg: 5.0
+    footprint_padding: 0.04
+    footprint:
+    - 0.6
+    - 0.52
+    inflation_radius: 0.6
+    battery_capacity_wh: 180.0
+    capabilities:
+    - humanoid_transport
+    - manual_handling
+    wh_per_meter_empty: 2.0
+    wh_per_meter_kg: 0.04
 
 # --- scheduler tuning ----------------------------------------------------
 # Kept next to the robot data because the cost function's weights only make

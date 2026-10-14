@@ -2,7 +2,7 @@
 Top-level bringup for the heterogeneous fleet simulation.
 
 Brings up, in order:
-  1. Gazebo + the scanned-map world + the three robots and their controllers
+  1. Gazebo + the scanned-map world + the four robots and their controllers
   2. the ros_gz bridge (clock, scans, ground-truth poses)
   3. one Nav2 stack per robot, in per-robot namespaces
   4. RViz2 with the fleet layout
@@ -32,6 +32,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _load_gz_launch_module(gz_share):
@@ -99,8 +100,8 @@ def generate_launch_description():
 
     # --- 4. RViz2 ---------------------------------------------------------
     rviz_node = Node(
-        package="rviz2",
-        executable="rviz2",
+        package="hetero_fleet_bringup",
+        executable="rviz_compat.py",
         name="rviz2",
         output="screen",
         arguments=["-d", rviz_cfg],
@@ -114,7 +115,8 @@ def generate_launch_description():
         executable="fleet_manager",
         name="fleet_manager",
         output="screen",
-        parameters=[{"use_sim_time": use_sim_time}],
+        parameters=[{"use_sim_time": use_sim_time,
+                     "metrics_dir": ParameterValue(LaunchConfiguration("metrics_dir"), value_type=str)}],
         condition=IfCondition(use_scheduler),
     )
 
@@ -123,6 +125,8 @@ def generate_launch_description():
             DeclareLaunchArgument("headless", default_value="false"),
             DeclareLaunchArgument("rviz", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
+            DeclareLaunchArgument("metrics_dir", default_value="",
+                                  description="Optional result directory; empty uses workspace metrics/"),
             DeclareLaunchArgument(
                 "scheduler", default_value="true",
                 description="Start fleet_manager alongside the simulation",

@@ -40,6 +40,8 @@ import os
 # The capability vocabulary, mirrored from robot_profiles.yaml. Used only to
 # sanity-check that a scenario's task can be served by *some* robot.
 KNOWN_CAPABILITIES = {
+    "humanoid_transport",
+    "manual_handling",
     "light_payload",
     "heavy_payload",
     "narrow_aisle",

@@ -1,0 +1,7 @@
+# Measured travel plus traffic relative to unobstructed map travel.
+# Derived from a completed 10-task four-robot Gazebo batch (10/10, no failures).
+travel_factors:
+  light_1: 2.776101126700986
+  heavy_1: 3.0829750087867716
+  omni_1: 4.429250572375023
+  g1_1: 2.6168288533624136

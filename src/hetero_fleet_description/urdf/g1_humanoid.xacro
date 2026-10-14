@@ -1,0 +1,918 @@
+<?xml version="1.0"?>
+<robot name="g1_humanoid" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="pelvis">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/pelvis.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0 0.0 -0.068445" rpy="0 0 0" />
+      <mass value="2.7796770000000004" />
+      <inertia ixx="0.00622907901" ixy="0.0" ixz="1.240029e-06" iyy="0.005496812361000001" iyz="0.0" izz="0.0046757360160000015" />
+    </inertial>
+    <collision>
+      <origin xyz="0.0 0.0 -0.0585" />
+      <geometry>
+        <box size="0.198 0.216 0.135" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="pelvis_contour_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/pelvis_contour_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <mass value="0.0007290000000000002" />
+      <inertia ixx="5.9049e-08" ixy="0.0" ixz="0.0" iyy="5.9049e-08" iyz="0.0" izz="5.9049e-08" />
+    </inertial>
+  </link>
+  <link name="left_hip_pitch_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_hip_pitch_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0024669 0.0430119 -0.023454" rpy="0 0 0" />
+      <mass value="0.9841500000000002" />
+      <inertia ixx="0.00106937739" ixy="2.1730032e-05" ixz="-2.0312856000000003e-05" iyy="0.0008380824570000001" iyz="0.00010097379000000001" izz="0.000756535788" />
+    </inertial>
+  </link>
+  <link name="left_hip_roll_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_hip_roll_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.026830800000000002 -0.0009404999999999999 -0.0791406" rpy="0 0 0" />
+      <mass value="1.1080800000000002" />
+      <inertia ixx="0.0014037718770000002" ixy="-2.2438620000000005e-06" ixz="-0.00023076349200000003" iyy="0.0014244390270000001" iyz="1.0865016e-05" izz="0.000979918155" />
+    </inertial>
+  </link>
+  <link name="left_hip_yaw_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_hip_yaw_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0519381 -0.0098829 -0.135702" rpy="0 0 0" />
+      <mass value="1.240758" />
+      <inertia ixx="0.0034114969260000006" ixy="-0.000319514139" ixz="-0.001414105452" iyy="0.0044950460760000005" iyz="-0.00041759452800000003" izz="0.0018594530100000002" />
+    </inertial>
+    <collision>
+      <origin xyz="-0.03150000000000001 0.0 -0.09000000000000001" />
+      <geometry>
+        <box size="0.081 0.081 0.15300000000000002" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_knee_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_knee_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0049113 0.0035675999999999998 -0.108666" rpy="0 0 0" />
+      <mass value="1.4084280000000002" />
+      <inertia ixx="0.006689661210000001" ixy="2.8461618e-05" ixz="-2.6513001000000005e-05" iyy="0.006658955730000001" iyz="-0.0004219641540000001" izz="0.0008956552320000001" />
+    </inertial>
+    <collision>
+      <origin xyz="0.007200000000000001 0.0 -0.12600000000000003" />
+      <geometry>
+        <box size="0.07650000000000001 0.07650000000000001 0.216" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_ankle_pitch_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_ankle_pitch_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0065421 0.0 0.010023299999999999" rpy="0 0 0" />
+      <mass value="0.053946" />
+      <inertia ixx="4.960116e-06" ixy="0.0" ixz="-1.7124210000000003e-06" iyy="1.1160261e-05" iyz="0.0" izz="7.440174000000001e-06" />
+    </inertial>
+  </link>
+  <link name="left_ankle_roll_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_ankle_roll_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0238545 0.0 -0.014782499999999999" rpy="0 0 0" />
+      <mass value="0.44323200000000007" />
+      <inertia ixx="0.000131738319" ixy="1.18098e-07" ixz="5.2612659000000007e-05" iyy="0.0009542908890000001" iyz="-5.9049e-08" izz="0.000984169683" />
+    </inertial>
+    <collision>
+      <origin xyz="0.03150000000000001 0.0 -0.02025" />
+      <geometry>
+        <box size="0.171 0.081 0.022500000000000003" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_hip_pitch_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_hip_pitch_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0024669 -0.0430119 -0.023454" rpy="0 0 0" />
+      <mass value="0.9841500000000002" />
+      <inertia ixx="0.00106937739" ixy="-2.1730032e-05" ixz="-2.0312856000000003e-05" iyy="0.0008380824570000001" iyz="-0.00010097379000000001" izz="0.000756535788" />
+    </inertial>
+  </link>
+  <link name="right_hip_roll_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_hip_roll_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.026830800000000002 0.0009404999999999999 -0.0791406" rpy="0 0 0" />
+      <mass value="1.1080800000000002" />
+      <inertia ixx="0.0014037718770000002" ixy="2.2438620000000005e-06" ixz="-0.00023076349200000003" iyy="0.0014244390270000001" iyz="-1.0865016e-05" izz="0.000979918155" />
+    </inertial>
+  </link>
+  <link name="right_hip_yaw_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_hip_yaw_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0519381 0.0098829 -0.135702" rpy="0 0 0" />
+      <mass value="1.240758" />
+      <inertia ixx="0.0034114969260000006" ixy="0.000319514139" ixz="-0.001414105452" iyy="0.0044950460760000005" iyz="0.00041759452800000003" izz="0.0018594530100000002" />
+    </inertial>
+    <collision>
+      <origin xyz="-0.03150000000000001 0.0 -0.09000000000000001" />
+      <geometry>
+        <box size="0.081 0.081 0.15300000000000002" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_knee_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_knee_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0049113 -0.0035675999999999998 -0.108666" rpy="0 0 0" />
+      <mass value="1.4084280000000002" />
+      <inertia ixx="0.006689661210000001" ixy="-2.8461618e-05" ixz="2.6513001000000005e-05" iyy="0.006658955730000001" iyz="0.0004219641540000001" izz="0.0008956552320000001" />
+    </inertial>
+    <collision>
+      <origin xyz="0.007200000000000001 0.0 -0.12600000000000003" />
+      <geometry>
+        <box size="0.07650000000000001 0.07650000000000001 0.216" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_ankle_pitch_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_ankle_pitch_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0065421 0.0 0.010023299999999999" rpy="0 0 0" />
+      <mass value="0.053946" />
+      <inertia ixx="4.960116e-06" ixy="0.0" ixz="-1.7124210000000003e-06" iyy="1.1160261e-05" iyz="0.0" izz="7.440174000000001e-06" />
+    </inertial>
+  </link>
+  <link name="right_ankle_roll_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_ankle_roll_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0238545 0.0 -0.014782499999999999" rpy="0 0 0" />
+      <mass value="0.44323200000000007" />
+      <inertia ixx="0.000131738319" ixy="-1.18098e-07" ixz="5.2612659000000007e-05" iyy="0.0009542908890000001" iyz="5.9049e-08" izz="0.000984169683" />
+    </inertial>
+    <collision>
+      <origin xyz="0.03150000000000001 0.0 -0.02025" />
+      <geometry>
+        <box size="0.171 0.081 0.022500000000000003" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="torso_link">
+    <visual>
+      <origin xyz="0.0035671500000000003 0.0 -0.039599999999999996" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/torso_link_23dof_rev_1_0.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0008379 0.00031140000000000003 0.13573800000000003" rpy="0 0 0" />
+      <mass value="4.942620000000001" />
+      <inertia ixx="0.0348684345" ixy="1.9664497980000003e-05" ixz="-0.0010460530350000002" iyy="0.027761296860000003" iyz="-1.3226385510000001e-05" izz="0.015147249480000003" />
+    </inertial>
+    <collision>
+      <origin xyz="0.0 0.0 0.15300000000000002" />
+      <geometry>
+        <box size="0.20700000000000002 0.27 0.30600000000000005" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="logo_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/logo_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <mass value="0.0007290000000000002" />
+      <inertia ixx="5.9049e-08" ixy="0.0" ixz="0.0" iyy="5.9049e-08" iyz="0.0" izz="5.9049e-08" />
+    </inertial>
+  </link>
+  <link name="head_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/head_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0047403 0.00026910000000000004 0.4048821" rpy="0 0 0" />
+      <mass value="0.7552440000000001" />
+      <inertia ixx="0.0024121817649900004" ixy="-1.5016160700000002e-06" ixz="-4.1012482950000005e-05" iyy="0.00247132583388" iyz="-2.2001657400000004e-06" izz="0.00106755336639" />
+    </inertial>
+    <collision>
+      <origin xyz="0.009000000000000001 0.0 0.41400000000000003" />
+      <geometry>
+        <box size="0.162 0.162 0.162" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="imu_in_torso">
+  </link>
+  <link name="imu_in_pelvis">
+  </link>
+  <link name="d435_link">
+  </link>
+  <link name="mid360_link">
+  </link>
+  <link name="left_shoulder_pitch_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_shoulder_pitch_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0 0.0323028 -0.0104652" rpy="0 0 0" />
+      <mass value="0.523422" />
+      <inertia ixx="0.000253379259" ixy="-5.432508e-06" ixz="3.779136e-06" iyy="0.00026749197000000005" iyz="1.3345074000000003e-05" izz="0.00024977727" />
+    </inertial>
+  </link>
+  <link name="left_shoulder_roll_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_shoulder_roll_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0002043 0.006543 -0.056918699999999996" rpy="0 0 0" />
+      <mass value="0.4687470000000001" />
+      <inertia ixx="0.00036474567300000005" ixy="-5.9049e-07" ixz="5.137263e-06" iyy="0.00040814668800000003" iyz="-3.1295970000000006e-06" izz="0.000229936806" />
+    </inertial>
+  </link>
+  <link name="left_shoulder_yaw_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_shoulder_yaw_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0096957 -0.0026541 -0.06480810000000001" rpy="0 0 0" />
+      <mass value="0.5350860000000001" />
+      <inertia ixx="0.000589781412" ixy="4.664871000000001e-06" ixz="8.3377188e-05" iyy="0.0006262146450000001" iyz="-1.6888014000000003e-05" izz="0.000257099346" />
+    </inertial>
+  </link>
+  <link name="left_elbow_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_elbow_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0584604 0.0040086 -0.0090558" rpy="0 0 0" />
+      <mass value="0.43740000000000007" />
+      <inertia ixx="0.00017071065900000002" ixy="3.8558997000000007e-05" ixz="1.0156428000000001e-05" iyy="0.000245171448" iyz="-3.3067440000000004e-06" izz="0.00024782865300000006" />
+    </inertial>
+    <collision>
+      <origin xyz="0.0585 0.0 0.0" />
+      <geometry>
+        <box size="0.14400000000000002 0.0585 0.0585" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_wrist_roll_rubber_hand">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/left_wrist_roll_rubber_hand.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.09715190985 0.001471607505 0.0018202037670000002" rpy="0 0 0" />
+      <mass value="0.2602009785600001" />
+      <inertia ixx="0.00011581572506070152" ixy="-2.4789768600492006e-06" ixz="-2.3329436638842006e-05" iyy="0.0011826354871706096" iyz="1.4748916912947002e-06" izz="0.0011466218244899594" />
+    </inertial>
+  </link>
+  <link name="right_shoulder_pitch_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_shoulder_pitch_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0 -0.0323028 -0.0104652" rpy="0 0 0" />
+      <mass value="0.523422" />
+      <inertia ixx="0.000253379259" ixy="5.432508e-06" ixz="3.779136e-06" iyy="0.00026749197000000005" iyz="-1.3345074000000003e-05" izz="0.00024977727" />
+    </inertial>
+  </link>
+  <link name="right_shoulder_roll_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_shoulder_roll_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="-0.0002043 -0.006543 -0.056918699999999996" rpy="0 0 0" />
+      <mass value="0.4687470000000001" />
+      <inertia ixx="0.00036474567300000005" ixy="5.9049e-07" ixz="5.137263e-06" iyy="0.00040814668800000003" iyz="3.1295970000000006e-06" izz="0.000229936806" />
+    </inertial>
+  </link>
+  <link name="right_shoulder_yaw_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_shoulder_yaw_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0096957 0.0026541 -0.06480810000000001" rpy="0 0 0" />
+      <mass value="0.5350860000000001" />
+      <inertia ixx="0.000589781412" ixy="-4.664871000000001e-06" ixz="8.3377188e-05" iyy="0.0006262146450000001" iyz="1.6888014000000003e-05" izz="0.000257099346" />
+    </inertial>
+  </link>
+  <link name="right_elbow_link">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_elbow_link.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.0584604 -0.0040086 -0.0090558" rpy="0 0 0" />
+      <mass value="0.43740000000000007" />
+      <inertia ixx="0.00017071065900000002" ixy="-3.8558997000000007e-05" ixz="1.0156428000000001e-05" iyy="0.000245171448" iyz="3.3067440000000004e-06" izz="0.00024782865300000006" />
+    </inertial>
+    <collision>
+      <origin xyz="0.0585 0.0 0.0" />
+      <geometry>
+        <box size="0.14400000000000002 0.0585 0.0585" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_wrist_roll_rubber_hand">
+    <visual>
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://hetero_fleet_description/meshes/g1/right_wrist_roll_rubber_hand.STL" scale="0.9 0.9 0.9" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0.09715190985 -0.001471607505 0.0018202037670000002" rpy="0 0 0" />
+      <mass value="0.2602009785600001" />
+      <inertia ixx="0.00011581572506070152" ixy="2.4789768600492006e-06" ixz="-2.3329436638842006e-05" iyy="0.0011826354871706096" iyz="-1.4748916912947002e-06" izz="0.0011466218244899594" />
+    </inertial>
+  </link>
+  <joint name="pelvis_contour_joint" type="fixed">
+    <parent link="pelvis" />
+    <child link="pelvis_contour_link" />
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+  </joint>
+  <joint name="left_hip_pitch_joint" type="revolute">
+    <parent link="pelvis" />
+    <child link="left_hip_pitch_link" />
+    <origin xyz="0.0 0.0580068 -0.09243" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.5307" upper="2.8798" effort="139" velocity="20" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="left_hip_roll_joint" type="revolute">
+    <parent link="left_hip_pitch_link" />
+    <child link="left_hip_roll_link" />
+    <origin xyz="0.0 0.0468 -0.0274185" rpy="0 -0.1749 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.5236" upper="2.9671" effort="139" velocity="20" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="left_hip_yaw_joint" type="revolute">
+    <parent link="left_hip_roll_link" />
+    <child link="left_hip_yaw_link" />
+    <origin xyz="0.0225009 0.0 -0.111708" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.7576" upper="2.7576" effort="88" velocity="32" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="left_knee_joint" type="revolute">
+    <parent link="left_hip_yaw_link" />
+    <child link="left_knee_link" />
+    <origin xyz="-0.0704457 0.0019340100000000001 -0.159606" rpy="0 0.1749 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.087267" upper="2.8798" effort="139" velocity="20" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="left_ankle_pitch_joint" type="revolute">
+    <parent link="left_knee_link" />
+    <child link="left_ankle_pitch_link" />
+    <origin xyz="0.0 -8.50005e-05 -0.270009" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.87267" upper="0.5236" effort="35" velocity="30" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="left_ankle_roll_joint" type="revolute">
+    <parent link="left_ankle_pitch_link" />
+    <child link="left_ankle_roll_link" />
+    <origin xyz="0.0 0.0 -0.015802200000000002" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.2618" upper="0.2618" effort="35" velocity="30" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="right_hip_pitch_joint" type="revolute">
+    <parent link="pelvis" />
+    <child link="right_hip_pitch_link" />
+    <origin xyz="0.0 -0.0580068 -0.09243" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.5307" upper="2.8798" effort="139" velocity="20" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="right_hip_roll_joint" type="revolute">
+    <parent link="right_hip_pitch_link" />
+    <child link="right_hip_roll_link" />
+    <origin xyz="0.0 -0.0468 -0.0274185" rpy="0 -0.1749 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-2.9671" upper="0.5236" effort="139" velocity="20" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="right_hip_yaw_joint" type="revolute">
+    <parent link="right_hip_roll_link" />
+    <child link="right_hip_yaw_link" />
+    <origin xyz="0.0225009 0.0 -0.111708" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.7576" upper="2.7576" effort="88" velocity="32" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="right_knee_joint" type="revolute">
+    <parent link="right_hip_yaw_link" />
+    <child link="right_knee_link" />
+    <origin xyz="-0.0704457 -0.0019340100000000001 -0.159606" rpy="0 0.1749 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.087267" upper="2.8798" effort="139" velocity="20" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="right_ankle_pitch_joint" type="revolute">
+    <parent link="right_knee_link" />
+    <child link="right_ankle_pitch_link" />
+    <origin xyz="0.0 8.50005e-05 -0.270009" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.87267" upper="0.5236" effort="35" velocity="30" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="right_ankle_roll_joint" type="revolute">
+    <parent link="right_ankle_pitch_link" />
+    <child link="right_ankle_roll_link" />
+    <origin xyz="0.0 0.0 -0.015802200000000002" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.2618" upper="0.2618" effort="35" velocity="30" />
+    <dynamics damping="0.001" friction="0.0" />
+  </joint>
+  <joint name="waist_yaw_joint" type="fixed">
+    <parent link="pelvis" />
+    <child link="torso_link" />
+    <origin xyz="-0.0035671500000000003 0.0 0.039599999999999996" rpy="0 0 0" />
+  </joint>
+  <joint name="logo_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="logo_link" />
+    <origin xyz="0.0035671500000000003 0.0 -0.039599999999999996" rpy="0 0 0" />
+  </joint>
+  <joint name="head_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="head_link" />
+    <origin xyz="0.0035671500000000003 0.0 -0.039599999999999996" rpy="0 0 0" />
+  </joint>
+  <joint name="imu_in_torso_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="imu_in_torso" />
+    <origin xyz="-0.035631 -0.002016 0.133128" rpy="0 0 0" />
+  </joint>
+  <joint name="imu_in_pelvis_joint" type="fixed">
+    <parent link="pelvis" />
+    <child link="imu_in_pelvis" />
+    <origin xyz="0.040725 0.0 -0.075051" rpy="0 0 0" />
+  </joint>
+  <joint name="d435_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="d435_link" />
+    <origin xyz="0.05186115 0.015777 0.386883" rpy="0 0.8307767239493009 0" />
+  </joint>
+  <joint name="mid360_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="mid360_link" />
+    <origin xyz="0.00025515 2.7000000000000002e-05 0.374562" rpy="0 0.04014257279586953 0" />
+  </joint>
+  <joint name="left_shoulder_pitch_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="left_shoulder_pitch_link" />
+    <origin xyz="0.00356067 0.090198 0.223002" rpy="0.27931 0.000054949 -0.00019159" />
+  </joint>
+  <joint name="left_shoulder_roll_joint" type="fixed">
+    <parent link="left_shoulder_pitch_link" />
+    <child link="left_shoulder_roll_link" />
+    <origin xyz="0.0 0.0342 -0.0124479" rpy="-0.27925 0 0" />
+  </joint>
+  <joint name="left_shoulder_yaw_joint" type="fixed">
+    <parent link="left_shoulder_roll_link" />
+    <child link="left_shoulder_yaw_link" />
+    <origin xyz="0.0 0.005616 -0.09288" rpy="0 0 0" />
+  </joint>
+  <joint name="left_elbow_joint" type="fixed">
+    <parent link="left_shoulder_yaw_link" />
+    <child link="left_elbow_link" />
+    <origin xyz="0.014204699999999999 0.0 -0.07246620000000001" rpy="0 0 0" />
+  </joint>
+  <joint name="left_wrist_roll_joint" type="fixed">
+    <parent link="left_elbow_link" />
+    <child link="left_wrist_roll_rubber_hand" />
+    <origin xyz="0.09000000000000001 0.001699119 -0.009000000000000001" rpy="0 0 0" />
+  </joint>
+  <joint name="right_shoulder_pitch_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="right_shoulder_pitch_link" />
+    <origin xyz="0.00356067 -0.09018899999999999 0.223002" rpy="-0.27931 0.000054949 0.00019159" />
+  </joint>
+  <joint name="right_shoulder_roll_joint" type="fixed">
+    <parent link="right_shoulder_pitch_link" />
+    <child link="right_shoulder_roll_link" />
+    <origin xyz="0.0 -0.0342 -0.0124479" rpy="0.27925 0 0" />
+  </joint>
+  <joint name="right_shoulder_yaw_joint" type="fixed">
+    <parent link="right_shoulder_roll_link" />
+    <child link="right_shoulder_yaw_link" />
+    <origin xyz="0.0 -0.005616 -0.09288" rpy="0 0 0" />
+  </joint>
+  <joint name="right_elbow_joint" type="fixed">
+    <parent link="right_shoulder_yaw_link" />
+    <child link="right_elbow_link" />
+    <origin xyz="0.014204699999999999 0.0 -0.07246620000000001" rpy="0 0 0" />
+  </joint>
+  <joint name="right_wrist_roll_joint" type="fixed">
+    <parent link="right_elbow_link" />
+    <child link="right_wrist_roll_rubber_hand" />
+    <origin xyz="0.09000000000000001 -0.001699119 -0.009000000000000001" rpy="0 0 0" />
+  </joint>
+  <xacro:arg name="robot_name" default="g1_1" />
+  <xacro:arg name="controllers_file" default="" />
+  <gazebo reference="pelvis">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="pelvis_contour_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_hip_pitch_link">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_hip_roll_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_hip_yaw_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_knee_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_ankle_pitch_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_ankle_roll_link">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_hip_pitch_link">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_hip_roll_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_hip_yaw_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_knee_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_ankle_pitch_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_ankle_roll_link">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="torso_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="logo_link">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="head_link">
+    <material>
+      <ambient>0.2 0.2 0.2 1</ambient>
+      <diffuse>0.2 0.2 0.2 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_shoulder_pitch_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_shoulder_roll_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_shoulder_yaw_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_elbow_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="left_wrist_roll_rubber_hand">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_shoulder_pitch_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_shoulder_roll_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_shoulder_yaw_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_elbow_link">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <gazebo reference="right_wrist_roll_rubber_hand">
+    <material>
+      <ambient>0.7 0.7 0.7 1</ambient>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+    </material>
+  </gazebo>
+  <link name="base_link" />
+  <joint name="g1_base_joint" type="fixed">
+    <parent link="base_link" />
+    <child link="pelvis" />
+    <origin xyz="0 0 0.7137" />
+  </joint>
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder radius=".025" length=".035" />
+      </geometry>
+    </visual>
+  </link>
+  <joint name="g1_lidar_joint" type="fixed">
+    <parent link="pelvis" />
+    <child link="lidar_link" />
+    <origin xyz="0 0 0.56" />
+  </joint>
+  <gazebo reference="lidar_link">
+    <sensor name="$(arg robot_name)_lidar" type="gpu_lidar">
+      <always_on>1</always_on>
+      <visualize>false</visualize>
+      <update_rate>15</update_rate>
+      <topic>/$(arg robot_name)/scan</topic>
+      <frame_id>lidar_link</frame_id>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>720</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159</min_angle>
+            <max_angle>3.14159</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>.12</min>
+          <max>12.0</max>
+          <resolution>.01</resolution>
+        </range>
+      </lidar>
+    </sensor>
+  </gazebo>
+  <gazebo reference="left_ankle_roll_link">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <maxContacts>4</maxContacts>
+  </gazebo>
+  <gazebo reference="right_ankle_roll_link">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <maxContacts>4</maxContacts>
+  </gazebo>
+  <gazebo>
+    <plugin filename="hetero_g1_locomotion" name="hetero_fleet::G1Locomotion">
+      <robot_name>$(arg robot_name)</robot_name>
+      <scale>0.9</scale>
+      <policy_path>$(find hetero_fleet_gz)/policies/g1/motion.bin</policy_path>
+    </plugin>
+  </gazebo>
+</robot>

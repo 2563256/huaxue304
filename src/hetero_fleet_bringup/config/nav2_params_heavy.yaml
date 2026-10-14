@@ -44,7 +44,8 @@ bt_navigator:
     # Raised from the Nav2 default of 20 ms; see the note in
     # nav2_params_light.yaml - under this machine's load the ACK can miss the
     # default window and abort the goal.
-    default_server_timeout: 300
+    plugin_lib_names: ["hetero_stable_route_bt"]
+    default_server_timeout: 2000
 
 controller_server:
   ros__parameters:
@@ -283,7 +284,7 @@ planner_server:
   ros__parameters:
     use_sim_time: true
     # Expected computation cadence only; the BT controls replanning triggers.
-    expected_planner_frequency: 0.0666667
+    expected_planner_frequency: 0.5
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_smac_planner::SmacPlanner2D"

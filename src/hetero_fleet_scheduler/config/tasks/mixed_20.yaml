@@ -1,16 +1,16 @@
-# Three-robot balanced workload; all tasks feasible, equal priority.
-# Includes grid path travel, initial/subsequent deadhead and 10 s handling.
+# Four-robot balanced workload; all tasks feasible, equal priority.
+# Includes grid travel, deadhead, measured travel/traffic factors and 10 s handling.
 # Keep this order (do not --shuffle) to preserve the workload estimate.
 tasks:
 - id: balanced_20_01
   type: transport
   pickup:
-  - 9.1
-  - 4.22
+  - 5.8
+  - 0.05
   - 0.0
   dropoff:
-  - 11.0
-  - 4.22
+  - 0.0
+  - 4.1
   - 0.0
   payload_kg: 30.0
   required_capability: omnidirectional
@@ -19,12 +19,12 @@ tasks:
 - id: balanced_20_02
   type: transport
   pickup:
-  - 1.7
+  - -2.0
   - 4.22
   - 0.0
   dropoff:
-  - 5.4
-  - 4.22
+  - 0.0
+  - 4.1
   - 0.0
   payload_kg: 45.0
   required_capability: omnidirectional
@@ -33,56 +33,56 @@ tasks:
 - id: balanced_20_03
   type: transport
   pickup:
-  - 9.1
-  - 4.22
-  - 0.0
-  dropoff:
-  - 8.1
+  - 10.6
   - -0.43
   - 0.0
-  payload_kg: 65.0
-  required_capability: omnidirectional
+  dropoff:
+  - 0.0
+  - 4.1
+  - 0.0
+  payload_kg: 8.0
+  required_capability: light_payload
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_04
   type: transport
   pickup:
-  - 10.6
-  - -0.43
-  - 0.0
-  dropoff:
-  - 5.4
+  - -2.0
   - 4.22
   - 0.0
-  payload_kg: 30.0
-  required_capability: omnidirectional
+  dropoff:
+  - 0.0
+  - 4.1
+  - 0.0
+  payload_kg: 95.0
+  required_capability: heavy_payload
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_05
   type: transport
   pickup:
-  - 10.6
-  - -0.43
+  - 9.1
+  - 4.22
   - 0.0
   dropoff:
-  - 8.1
-  - -0.43
+  - 7.0
+  - 4.22
   - 0.0
-  payload_kg: 45.0
-  required_capability: omnidirectional
+  payload_kg: 12.0
+  required_capability: light_payload
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_06
   type: transport
   pickup:
-  - 1.7
+  - -2.0
   - 4.22
   - 0.0
   dropoff:
-  - 11.0
+  - 5.4
   - 4.22
   - 0.0
-  payload_kg: 95.0
+  payload_kg: 110.0
   required_capability: heavy_payload
   priority: 2
   deadline_sec: 1800.0
@@ -93,24 +93,24 @@ tasks:
   - -0.43
   - 0.0
   dropoff:
-  - 5.4
+  - 7.0
   - 4.22
   - 0.0
-  payload_kg: 8.0
-  required_capability: light_payload
+  payload_kg: 120.0
+  required_capability: heavy_payload
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_08
   type: transport
   pickup:
-  - 9.1
-  - 4.22
-  - 0.0
-  dropoff:
-  - 8.1
+  - 10.6
   - -0.43
   - 0.0
-  payload_kg: 12.0
+  dropoff:
+  - 5.4
+  - 4.22
+  - 0.0
+  payload_kg: 16.0
   required_capability: light_payload
   priority: 2
   deadline_sec: 1800.0
@@ -121,11 +121,11 @@ tasks:
   - 4.22
   - 0.0
   dropoff:
-  - 11.0
+  - 5.4
   - 4.22
   - 0.0
-  payload_kg: 16.0
-  required_capability: light_payload
+  payload_kg: 65.0
+  required_capability: omnidirectional
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_10
@@ -135,28 +135,14 @@ tasks:
   - 4.22
   - 0.0
   dropoff:
-  - 8.1
-  - -0.43
+  - 7.0
+  - 4.22
   - 0.0
-  payload_kg: 110.0
-  required_capability: heavy_payload
+  payload_kg: 1.0
+  required_capability: humanoid_transport
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_11
-  type: transport
-  pickup:
-  - 10.6
-  - -0.43
-  - 0.0
-  dropoff:
-  - 11.0
-  - 4.22
-  - 0.0
-  payload_kg: 120.0
-  required_capability: heavy_payload
-  priority: 2
-  deadline_sec: 1800.0
-- id: balanced_20_12
   type: transport
   pickup:
   - 9.1
@@ -166,6 +152,20 @@ tasks:
   - 5.4
   - 4.22
   - 0.0
+  payload_kg: 30.0
+  required_capability: omnidirectional
+  priority: 2
+  deadline_sec: 1800.0
+- id: balanced_20_12
+  type: transport
+  pickup:
+  - 5.8
+  - 0.05
+  - 0.0
+  dropoff:
+  - 0.0
+  - 4.1
+  - 0.0
   payload_kg: 8.0
   required_capability: light_payload
   priority: 2
@@ -173,40 +173,40 @@ tasks:
 - id: balanced_20_13
   type: transport
   pickup:
-  - 10.6
-  - -0.43
+  - 5.8
+  - 0.05
   - 0.0
   dropoff:
-  - 8.1
-  - -0.43
+  - 11.0
+  - 4.22
   - 0.0
-  payload_kg: 95.0
-  required_capability: heavy_payload
+  payload_kg: 45.0
+  required_capability: omnidirectional
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_14
   type: transport
   pickup:
-  - 10.6
-  - -0.43
-  - 0.0
-  dropoff:
-  - 5.4
+  - 9.1
   - 4.22
   - 0.0
-  payload_kg: 110.0
+  dropoff:
+  - 0.0
+  - 4.1
+  - 0.0
+  payload_kg: 95.0
   required_capability: heavy_payload
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_15
   type: transport
   pickup:
-  - 1.7
-  - 4.22
+  - 10.6
+  - -0.43
   - 0.0
   dropoff:
-  - 11.0
-  - 4.22
+  - 0.0
+  - 4.1
   - 0.0
   payload_kg: 12.0
   required_capability: light_payload
@@ -215,29 +215,29 @@ tasks:
 - id: balanced_20_16
   type: transport
   pickup:
-  - 10.6
-  - -0.43
+  - 5.8
+  - 0.05
   - 0.0
   dropoff:
-  - 5.4
-  - 4.22
+  - 8.1
+  - -0.43
   - 0.0
-  payload_kg: 16.0
-  required_capability: light_payload
+  payload_kg: 2.0
+  required_capability: humanoid_transport
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_17
   type: transport
   pickup:
-  - 1.7
-  - 4.22
+  - 10.6
+  - -0.43
   - 0.0
   dropoff:
-  - 5.4
+  - 7.0
   - 4.22
   - 0.0
-  payload_kg: 120.0
-  required_capability: heavy_payload
+  payload_kg: 3.0
+  required_capability: humanoid_transport
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_18
@@ -247,11 +247,11 @@ tasks:
   - 4.22
   - 0.0
   dropoff:
-  - 11.0
-  - 4.22
   - 0.0
-  payload_kg: 8.0
-  required_capability: light_payload
+  - 4.1
+  - 0.0
+  payload_kg: 1.0
+  required_capability: humanoid_transport
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_19
@@ -261,24 +261,24 @@ tasks:
   - 4.22
   - 0.0
   dropoff:
-  - 11.0
-  - 4.22
+  - 8.1
+  - -0.43
   - 0.0
-  payload_kg: 12.0
-  required_capability: light_payload
+  payload_kg: 2.0
+  required_capability: humanoid_transport
   priority: 2
   deadline_sec: 1800.0
 - id: balanced_20_20
   type: transport
   pickup:
-  - 1.7
-  - 4.22
+  - 5.8
+  - 0.05
   - 0.0
   dropoff:
   - 8.1
   - -0.43
   - 0.0
-  payload_kg: 65.0
-  required_capability: omnidirectional
+  payload_kg: 110.0
+  required_capability: heavy_payload
   priority: 2
   deadline_sec: 1800.0

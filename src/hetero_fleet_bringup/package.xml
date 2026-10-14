@@ -39,4 +39,5 @@
   <export>
     <build_type>ament_cmake</build_type>
   </export>
+  <exec_depend>hetero_fleet_navigation</exec_depend>
 </package>

@@ -114,6 +114,8 @@ def generate_launch_description():
                 'spawn_x': float(sx),
                 'spawn_y': float(sy),
                 'spawn_yaw': float(syaw),
+                'full_orientation': profiles['robot_types'][robot['type']]['kinematics'] == 'legged',
+                'ground_z': 0.117,
             }],
         ))
 

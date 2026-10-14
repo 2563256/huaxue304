@@ -202,6 +202,7 @@ class ScriptedNav:
 def make_manager(nav=None, return_to_charger=True, charger=(5.0, 5.0, 0.0)):
     """A FleetManager stripped down to what the standoff/charger code needs."""
     m = FleetManager.__new__(FleetManager)
+    m.simulate_when_nav_unavailable = True  # Explicit offline test mode.
     m._lock = threading.Lock()
     m._occupancy = None                      # every slot counts as free floor
     m.get_logger = _Logger
@@ -683,7 +684,7 @@ def test_route_feedback_allows_progress_away_from_euclidean_goal(monkeypatch):
     def advance(_):
         steps[0] += 1
         clock[0] += 0.1
-        m.live_pose['r1'] = (-0.01 * steps[0], 0.0, 0.0)
+        m.live_pose['r1'] = (-0.04 * steps[0], 0.0, 0.0)
         m._nav_feedback['r1'] = {'remaining': 10.0 - .2 * steps[0],
                                   'stamp': clock[0]}
         if steps[0] == 12:
@@ -693,6 +694,25 @@ def test_route_feedback_allows_progress_away_from_euclidean_goal(monkeypatch):
     status, stalled, _ = m._wait_for_result(m.robots['r1'], Pose2D(2, 0), future)
     assert status == 4 and not stalled
     assert steps[0] == 12
+
+
+def test_stationary_replans_do_not_reset_watchdog(monkeypatch):
+    import hetero_fleet_scheduler.fleet_manager as module
+    m = make_manager()
+    m.live_pose['r1'] = (0.0, 0.0, 0.0)
+    clock = [0.0]
+    m._now = lambda: clock[0]
+    future = FakeFuture()
+
+    def advance(_):
+        clock[0] += .1
+        m._nav_feedback['r1'] = {'remaining': 10.0 if int(clock[0]*10)%2 else 8.0,
+                                  'stamp': clock[0]}
+
+    monkeypatch.setattr(module, 'time', SimpleNamespace(sleep=advance))
+    status, stalled, _ = m._wait_for_result(m.robots['r1'], Pose2D(2, 0), future)
+    assert status is None and stalled
+    assert clock[0] < 1.0
 
 
 def test_paused_simulation_does_not_consume_watchdog_budget(monkeypatch):
@@ -750,7 +770,121 @@ def test_dispatch_waits_until_departing_vehicle_clears_pad():
     assert m._pickup_ready(Pose2D(9.1,4.22), 'r1')
 
 
+def test_dispatch_reserves_pickup_while_robot_leaves_charger():
+    m = make_manager()
+    task = Task(id='reserved', type='transport', pickup=Pose2D(1.7,4.22),
+                dropoff=Pose2D(11,4.22), payload_kg=1)
+    m.tasks = {task.id: task}
+    m.robots['other'] = RobotState(id='other', type='light_diff_amr',
+        pose=Pose2D(0,-.8), status=RobotStatus.ASSIGNED,
+        current_task_id=task.id)
+    m.live_pose['other'] = (0,-.8,0)
+    assert not m._pickup_ready(Pose2D(1.7,4.22), 'r1')
+    m.robots['other'].status = RobotStatus.TO_PICKUP
+    assert not m._pickup_ready(Pose2D(1.7,4.22), 'r1')
+    m.robots['other'].status = RobotStatus.TO_DROPOFF
+    assert m._pickup_ready(Pose2D(1.7,4.22), 'r1')
+
+
+def test_missing_nav2_never_fakes_physical_delivery():
+    m = make_manager()
+    m.simulate_when_nav_unavailable = False
+    m._send_goal = lambda *args: (None, 'unavailable')
+    m._simulate_leg = lambda *args: pytest.fail('Physical mode simulated a delivery')
+    ok, distance, energy = m._navigate(m.robots['r1'], Pose2D(2,0), 'pickup')
+    assert not ok and distance == 0 and energy == 0
+
+
+def test_dispatch_readiness_requires_nav2_in_physical_mode():
+    m = make_manager()
+    m.simulate_when_nav_unavailable = False
+    assert not m._navigation_available('r1')
+    m.nav_clients['r1'] = SimpleNamespace(server_is_ready=lambda: False)
+    assert not m._navigation_available('r1')
+    m.nav_clients['r1'] = SimpleNamespace(server_is_ready=lambda: True)
+    assert m._navigation_available('r1')
+
+
+def test_dispatch_waits_for_initial_sim_clock_and_repairs_zero_timestamp():
+    m = make_manager()
+    m.use_sim_clock = True
+    task = make_task('early', 1)
+    m.pending = [task.id]
+    m.tasks = {task.id: task}
+    m._now = lambda: 0.0
+    m._try_assign_all()
+    assert task.assigned_at_sec is None and task.created_at_sec == 0
+    m.metrics = SimpleNamespace(m=SimpleNamespace(first_task_at_sec=0),
+                                note_reschedule=lambda: None)
+    m._now = lambda: 100.0
+    m._try_assign_all()
+    assert task.created_at_sec == 100.0
+    assert m.metrics.m.first_task_at_sec == 100.0
+
+
 def test_dispatch_allows_a_different_zone_and_own_reservation():
     m=make_manager()
     m.zone_claims={(9.0,4.0):{0:'other'}, (1.5,4.0):{0:'r1'}}
     assert m._pickup_ready(Pose2D(1.7,4.22), 'r1')
+
+
+def test_biped_readiness_requires_live_balance_signal():
+    m = make_manager()
+    m.locomotion_health = {"g1_1": (False, 10.0)}
+    assert m._locomotion_available("r1", 10.1)
+    assert not m._locomotion_available("g1_1", 10.1)
+    m.locomotion_health["g1_1"] = (True, 10.0)
+    assert m._locomotion_available("g1_1", 10.5)
+    assert not m._locomotion_available("g1_1", 11.1)
+    assert not m._locomotion_available("g1_1", 0.0)
+
+
+def test_charger_approach_failure_stops_before_entering_the_bay():
+    """A failed approach must not issue a shortcut through parked teammates."""
+    m = make_manager()
+    m.charger_route = {'r1': [Pose2D(3.8, 0.2, math.pi), Pose2D(1.2, 0.2, -math.pi / 2)]}
+    place(m, (3.4, -0.8, math.pi))
+    sent = []
+    def navigate(robot, target, tag):
+        sent.append(target)
+        return False, 0.4, 0.2
+    m._navigate = navigate
+    m._drive_home(m.robots['r1'])
+    assert sent == [m.charger_route['r1'][0]]
+    assert m.robots['r1'].status == RobotStatus.IDLE
+    assert m.robots['r1'].odom_distance_m == 0.4
+
+
+def test_charger_approach_then_bay_are_accounted_as_one_docking_trip():
+    m = make_manager()
+    m.charger_route = {'r1': [Pose2D(3.8, 0.2, math.pi), Pose2D(1.2, 0.2, -math.pi / 2)]}
+    place(m, (3.4, -0.8, math.pi))
+    sent = []
+    def navigate(robot, target, tag):
+        sent.append(target)
+        return True, 1., 0.2
+    m._navigate = navigate
+    m._drive_home(m.robots['r1'])
+    assert sent == [*m.charger_route['r1'], m.charger_pose['r1']]
+    assert m.robots['r1'].odom_distance_m == 3.
+    assert m.robots['r1'].status == RobotStatus.IDLE
+
+
+def test_occupied_pickup_keeps_idle_robot_available_instead_of_docking():
+    m = make_manager()
+    robot = m.robots['r1']
+    robot.status = RobotStatus.IDLE
+    task = Task(id='waiting_pad', type='transport', pickup=Pose2D(9.1, 4.22),
+                dropoff=Pose2D(5.4, 4.22), payload_kg=1)
+    m.tasks = {task.id: task}
+    m.pending = [task.id]
+    m.zone_claims = {(9., 4.): {0: 'other'}}
+    m._can_serve = lambda robot, task: True
+    assert not m._pickup_ready(task.pickup, robot.id)
+    assert m._work_for(robot)
+    m._idle_since[robot.id] = 0.
+    m._now = lambda: 100.
+    m._locomotion_available = lambda *args: True
+    m._on_task_point = lambda *args: True
+    m._start_docking = lambda robot: pytest.fail('Occupied pickup triggered docking')
+    m._update_idle_timers()

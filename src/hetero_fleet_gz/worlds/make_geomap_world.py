@@ -87,6 +87,11 @@ ZONES = [
     ("dropoff_A",   8.10,  -0.43, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
     ("dropoff_B",  5.40,   4.22, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
     ("dropoff_C", 11.00,   4.22, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
+    # Additional pads spread transport work along both arms of the ring.
+    ("pickup_D", -2.00, 4.22, 0.6, 0.6, "0.10 0.85 0.20 0.55"),
+    ("pickup_E", 5.80, 0.05, 0.6, 0.6, "0.10 0.85 0.20 0.55"),
+    ("dropoff_D", 7.00, 4.22, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
+    ("dropoff_E", 0.00, 4.10, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
     # --- the charging station: a row against the south wall --------------
     # One charger per robot: every vehicle's spawn pose IS its charger (see
     # robot_profiles.yaml) and it drives back here when the fleet runs out of
@@ -111,6 +116,7 @@ ZONES = [
     # tools/verify_scene.py checks every one of them (0.70-0.72 m clearance;
     # the widest robot needs 0.53 m).
     ("charger_A",  -0.30,  -0.75, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
+    ("charger_B", 1.20, -0.80, 0.50, 0.50, "0.25 0.90 0.65 0.55"),
     ("charger_C",   2.70,  -0.85, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
     ("charger_D",   4.20,  -0.85, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
 ]
@@ -140,7 +146,7 @@ HEAD = f"""<?xml version='1.0'?>
            -> make_geomap_world.py -->
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics">
       <engine><filename>gz-physics-dartsim-plugin</filename></engine>
-      <max_step_size>0.0025</max_step_size>
+      <max_step_size>0.001</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </plugin>
     <plugin filename="gz-sim-user-commands-system"
@@ -160,19 +166,11 @@ HEAD = f"""<?xml version='1.0'?>
     </plugin>
     <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
 
-    <!-- 2.5 ms steps (400 Hz), not the usual 1 ms.
-
-         DART has to test every robot shape against ~1.6k map colliders on
-         every step, and at 1 ms that costs enough to hold the whole simulation
-         at ~0.35x real time (measured: window RTF 0.34 with the boxes, 1.00
-         without). Nothing here needs 1 kHz - the fastest thing on the map is a
-         0.066 m wheel turning at 4.5 rad/s (0.011 rad per 2.5 ms step) and the
-         controllers only run at 100 Hz. 400 Hz physics keeps every controller
-         fed and brings the window RTF back to ~1. -->
-    <physics name='2p5ms' type='ignored'>
-      <max_step_size>0.0025</max_step_size>
+    <!-- 1 ms steps keep the scaled G1 ankle torque controller stable. -->
+    <physics name='g1_1ms' type='ignored'>
+      <max_step_size>0.001</max_step_size>
       <real_time_factor>1</real_time_factor>
-      <real_time_update_rate>400</real_time_update_rate>
+      <real_time_update_rate>1000</real_time_update_rate>
     </physics>
     <gravity>0 0 -9.8</gravity>
 

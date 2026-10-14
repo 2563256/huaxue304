@@ -3,7 +3,7 @@
 from pathlib import Path
 import yaml,math
 ROOT=Path(__file__).resolve().parents[1]
-for kind in ['light','heavy','omni']:
+for kind in ['light','heavy','omni','g1']:
  p=ROOT/f'src/hetero_fleet_bringup/config/nav2_params_{kind}.yaml';text=p.read_text();cfg=yaml.safe_load(text)
  f=yaml.safe_load(cfg['local_costmap']['local_costmap']['ros__parameters']['footprint']);hx=max(v[0] for v in f);hy=max(v[1] for v in f)
  def points(x0,x1,y0,y1):return str([[round(x1,4),round(y1,4)],[round(x1,4),round(y0,4)],[round(x0,4),round(y0,4)],[round(x0,4),round(y1,4)]])

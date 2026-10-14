@@ -13,7 +13,7 @@ Only odom, base_footprint and the costmaps are per-robot.
 import os
 
 import yaml
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory, get_package_prefix, PackageNotFoundError
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
@@ -42,6 +42,7 @@ NAV2_PARAM_FILE = {
     "light_diff_amr": "nav2_params_light.yaml",
     "heavy_diff_amr": "nav2_params_heavy.yaml",
     "omni_mecanum_amr": "nav2_params_omni.yaml",
+    "g1_humanoid": "nav2_params_g1.yaml",
 }
 
 
@@ -91,6 +92,19 @@ def workspace_dir(package: str) -> str:
     return os.path.abspath(os.path.join(share, *([".."] * 4)))
 
 
+def navigation_library_dir():
+    """Resolve the plugin even from a terminal sourced before it was added."""
+    try:
+        prefix = get_package_prefix("hetero_fleet_navigation")
+    except PackageNotFoundError:
+        prefix = os.path.join(os.path.dirname(get_package_prefix("hetero_fleet_bringup")),
+                              "hetero_fleet_navigation")
+    directory = os.path.join(prefix, "lib")
+    if not os.path.isfile(os.path.join(directory, "libhetero_stable_route_bt.so")):
+        raise RuntimeError("Build hetero_fleet_navigation before starting Nav2")
+    return directory
+
+
 def launch_setup(context, *args, **kwargs):
     bringup_share = get_package_share_directory("hetero_fleet_bringup")
     desc_share = get_package_share_directory("hetero_fleet_description")
@@ -106,6 +120,8 @@ def launch_setup(context, *args, **kwargs):
     types = profiles["robot_types"]
     actions = []
     delay = 0.0
+    navigator_env = {"LD_LIBRARY_PATH": navigation_library_dir() + os.pathsep +
+                     os.environ.get("LD_LIBRARY_PATH", "")}
 
     # --- one GLOBAL map server, in the root namespace ---------------------
     # All robots share a single map, but the per-robot map_servers below live
@@ -322,6 +338,7 @@ def launch_setup(context, *args, **kwargs):
                             output="screen",
                             parameters=[params, {"use_sim_time": use_sim_time}],
                             remappings=remaps,
+                            additional_env=navigator_env if node_name == "bt_navigator" else None,
                         )
                     ],
                 )
@@ -344,36 +361,37 @@ def launch_setup(context, *args, **kwargs):
             if rtype["kinematics"] == "mecanum"
             else f"/{name}/{controller_name}/cmd_vel"
         )
-        actions.append(
-            TimerAction(
-                period=delay + 2.0,
-                actions=[
-                    Node(
-                        package="hetero_fleet_bringup",
-                        executable="cmd_vel_stamper.py",
-                        name="cmd_vel_stamper",
-                        namespace=name,
-                        output="screen",
-                        parameters=[
-                            {
-                                "use_sim_time": use_sim_time,
-                                "robot_name": name,
-                                "controller_name": controller_name,
-                                "output_topic": stamper_output,
-                                # Take the command from the collision
-                                # monitor's output rather than straight from
-                                # the smoother, so the safety layer is really
-                                # in the chain.
-                                "input_topic": f"/{name}/cmd_vel",
-                                # Physical X-arranged passive rollers use the standard twist signs.
-                                "angular_z_scale": 0.95 if rtype["kinematics"] == "mecanum" else 1.0,
-                                "mirror_y": False,
-                            }
-                        ],
-                    )
-                ],
+        if rtype["kinematics"] != "legged":
+            actions.append(
+                TimerAction(
+                    period=delay + 2.0,
+                    actions=[
+                        Node(
+                            package="hetero_fleet_bringup",
+                            executable="cmd_vel_stamper.py",
+                            name="cmd_vel_stamper",
+                            namespace=name,
+                            output="screen",
+                            parameters=[
+                                {
+                                    "use_sim_time": use_sim_time,
+                                    "robot_name": name,
+                                    "controller_name": controller_name,
+                                    "output_topic": stamper_output,
+                                    # Take the command from the collision
+                                    # monitor's output rather than straight from
+                                    # the smoother, so the safety layer is really
+                                    # in the chain.
+                                    "input_topic": f"/{name}/cmd_vel",
+                                    # Physical X-arranged passive rollers use the standard twist signs.
+                                    "angular_z_scale": 0.95 if rtype["kinematics"] == "mecanum" else 1.0,
+                                    "mirror_y": False,
+                                }
+                            ],
+                        )
+                    ],
+                )
             )
-        )
 
         # --- lifecycle manager: activates everything in the namespace -----
         actions.append(

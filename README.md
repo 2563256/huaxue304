@@ -1,6 +1,6 @@
 # hetero_fleet_geomap_ws — 异构机器人车队 Gazebo + Nav2 + 贪心调度仿真（实景扫描地图版）
 
-三台车、三种构型（`light_1` / `heavy_1` / `omni_1`）在一张**由点云扫描重建的
+四台机器人、四种构型（`light_1` / `heavy_1` / `omni_1` / `g1_1`）在一张**由点云扫描重建的
 室内地图**上协同完成「取货 → 送货」任务：Gazebo 负责物理与传感器，每台车跑自己的一套
 Nav2，`fleet_manager` 用可解释的成本函数决定「谁去做哪个任务」。
 
@@ -25,7 +25,7 @@ Nav2，`fleet_manager` 用可解释的成本函数决定「谁去做哪个任务
                        ▼
         /fleet_status · /task_markers · metrics/metrics.json + metrics/tasks.csv
 
-  物理层  Gazebo Sim 8.11（DART，2.5 ms 步长）+ worlds/geomap_fleet.sdf + 4 个 URDF 实例
+  物理层  Gazebo Sim 8.11（DART，1 ms 步长）+ worlds/geomap_fleet.sdf + 4 个 URDF 实例
   地图层  assets/scan_sources/ 里的原始扫描 → 处理成 models/geomap_final_noroof
           （1 个视觉网格 + 501 个盒体碰撞），栅格化成 maps/geomap.pgm
   桥接层  ros_gz_bridge(/clock, 4×scan, /gz/dynamic_pose) + 4× 真值里程计 relay
@@ -36,7 +36,15 @@ Nav2，`fleet_manager` 用可解释的成本函数决定「谁去做哪个任务
 
 ---
 
-## 当前控制更新（2026-10-10）
+## G1 双足机器人更新（2026-10-10）
+
+新增 `g1_1`，保持真实双足关节力矩控制，模型缩放 0.90，站立外观高度约 1.18 m。
+上身保持行走策略的训练姿态，12 个腿部关节执行宇树官方 LSTM 策略；没有轮式底座。
+导航最大速度 0.40 m/s，转速 0.65 rad/s，充电位 `(1.20,-0.80)`。
+任务按四类机器人预计忙碌时间配平；载荷和装卸沿用车队调度仿真，不包含手臂抓取动作。
+详细参数、复现步骤及验证结果见 [G1_INTEGRATION.md](G1_INTEGRATION.md)。
+
+## G1 接入前的控制更新（2026-10-10）
 
 车队调整为 light_1 / heavy_1 / omni_1 各一台，omni 尺寸缩小 16.7%，移除队友靠近减速。
 所有车型按实际矩形轮廓在全局和局部代价地图中感知队友，停止指令不再被爬行逻辑覆盖。

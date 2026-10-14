@@ -3,8 +3,8 @@
 
 Teammate scans have their own 10 Hz timer and use base_footprint, independent
 of lidar height/offset and of whether Gazebo's physical scan has arrived.
-Local costmaps see every body. A separate global-planning scan includes only
-vehicles stationary for 10 seconds, avoiding route flips around passing traffic.
+Both local and global costmaps see every body, including moving teammates.
+The navigation tree reuses valid paths and replans when a teammate blocks them.
 """
 import copy
 import math
@@ -79,7 +79,6 @@ class ScanFrameRelay(Node):
         self.samples=int(self.declare_parameter('samples',1080).value)
         self.rate=float(self.declare_parameter('publish_rate_hz',10.0).value)
         self.padding=float(self.declare_parameter('teammate_padding',0.12).value)
-        self.stationary_sec=float(self.declare_parameter('stationary_planning_sec',10.0).value)
         self.angles=np.arange(self.samples)*2*math.pi/self.samples-math.pi
         self.pubs={};self.obstacle_pubs={};self.contact_pubs={};self.planning_pubs={}
         for name in self.robots:
@@ -122,8 +121,7 @@ class ScanFrameRelay(Node):
                 returns=rectangle_returns(self.angles,bx,by,oyaw-eyaw,
                     length+2*self.padding,width+2*self.padding,.01,self.max_range)
                 ranges=np.minimum(ranges,returns)
-                if now-state.get("stationary_since",now)>=self.stationary_sec:
-                    planning_ranges=np.minimum(planning_ranges,returns)
+                planning_ranges=np.minimum(planning_ranges,returns)
                 contact_ranges=np.minimum(contact_ranges,rectangle_returns(
                     self.angles,bx,by,oyaw-eyaw,length,width,.01,self.max_range))
             out=LaserScan();out.header.stamp=stamp

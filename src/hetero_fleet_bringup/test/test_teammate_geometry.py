@@ -41,7 +41,7 @@ def test_observer_inside_body_reports_contact():
     assert np.all(relay.rectangle_returns([-2,0,1],0,0,.7,.672,.588)==.01)
 
 
-@pytest.mark.parametrize('ego', ['light_1','heavy_1','omni_1'])
+@pytest.mark.parametrize('ego', ['light_1','heavy_1','omni_1','g1_1'])
 def test_all_robots_see_both_other_bodies_without_physical_lidar(ego):
     class Clock:
         nanoseconds=12_000_000_000
@@ -50,9 +50,9 @@ def test_all_robots_see_both_other_bodies_without_physical_lidar(ego):
     class Publisher:
         def publish(self,m):self.msg=m
     obj=object.__new__(relay.ScanFrameRelay)
-    dims={'light_1':(.6888,.5412),'heavy_1':(.8556,.6448),'omni_1':(.672,.588)}
+    dims={'light_1':(.6888,.5412),'heavy_1':(.8556,.6448),'omni_1':(.672,.588),'g1_1':(.60,.52)}
     others=[name for name in dims if name!=ego]
-    poses={ego:(0.,0.,0.),others[0]:(2.,0.,0.),others[1]:(-2.,0.,0.)}
+    poses={ego:(0.,0.,0.),others[0]:(2.,0.,0.),others[1]:(-2.,0.,0.),others[2]:(0.,2.,0.)}
     obj.robots={name:{'pose':poses[name],'footprint':dims[name]} for name in dims}
     obj.robots[others[0]]['stationary_since']=0.0
     obj.robots[others[1]]['stationary_since']=12.0
@@ -67,11 +67,14 @@ def test_all_robots_see_both_other_bodies_without_physical_lidar(ego):
     scan=obj.obstacle_pubs[ego].msg
     assert scan.header.frame_id==ego+'/base_footprint'
     assert scan.ranges[540]==pytest.approx(2-dims[others[0]][0]/2-.02)
+    assert scan.ranges[810]==pytest.approx(2-dims[others[2]][1]/2-.02)
     assert scan.ranges[0]==pytest.approx(2-dims[others[1]][0]/2-.02)
     assert obj.contact_pubs[ego].msg.ranges[540]==pytest.approx(2-dims[others[0]][0]/2)
 
     assert np.isfinite(obj.planning_pubs[ego].msg.ranges[540])
-    assert np.isinf(obj.planning_pubs[ego].msg.ranges[0])
+    # A teammate just moving/turning must also block global planning.
+    assert np.isfinite(obj.planning_pubs[ego].msg.ranges[0])
+    assert obj.planning_pubs[ego].msg.ranges == obj.obstacle_pubs[ego].msg.ranges
 
 
 def test_stop_is_never_overridden_or_mutates_source():
@@ -98,7 +101,7 @@ def test_stop_is_never_overridden_or_mutates_source():
 
 def test_each_costmap_marks_and_clears_teammates_and_has_no_slowdown():
     config=SCRIPTS.parent/'config'
-    for typ in ['light','heavy','omni']:
+    for typ in ['light','heavy','omni','g1']:
         data=yaml.safe_load((config/f'nav2_params_{typ}.yaml').read_text())
         for name in ['local_costmap','global_costmap']:
             p=data[name][name]['ros__parameters']
@@ -112,7 +115,7 @@ def test_each_costmap_marks_and_clears_teammates_and_has_no_slowdown():
 
 
 def test_directional_stop_protects_motion_and_all_sides_when_turning():
-    for typ in ['light','heavy','omni']:
+    for typ in ['light','heavy','omni','g1']:
         data=yaml.safe_load((SCRIPTS.parent/'config'/f'nav2_params_{typ}.yaml').read_text())
         stop=data['collision_monitor']['ros__parameters']['PolygonStop']
         assert stop['type']=='velocity_polygon' and stop['action_type']=='stop'

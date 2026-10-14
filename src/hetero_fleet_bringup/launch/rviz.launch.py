@@ -11,6 +11,6 @@ def generate_launch_description():
     if transports:
         actions.append(SetEnvironmentVariable('FASTDDS_BUILTIN_TRANSPORTS', transports))
     actions.append(
-        Node(package='rviz2', executable='rviz2', name='rviz2', output='screen',
+        Node(package='hetero_fleet_bringup', executable='rviz_compat.py', name='rviz2', output='screen',
              arguments=['-d', cfg], parameters=[{'use_sim_time': True}]))
     return LaunchDescription(actions)

@@ -26,9 +26,9 @@ import yaml
 from PIL import Image
 from scipy import ndimage
 
-ZONE_NAMES = ["pickup_A", "pickup_B", "pickup_C",
-              "dropoff_A", "dropoff_B", "dropoff_C",
-              "charger_A", "charger_C", "charger_D"]
+ZONE_NAMES = ["pickup_A", "pickup_B", "pickup_C", "pickup_D", "pickup_E",
+              "dropoff_A", "dropoff_B", "dropoff_C", "dropoff_D", "dropoff_E",
+              "charger_A", "charger_B", "charger_C", "charger_D"]
 
 
 def load_map(yaml_path):

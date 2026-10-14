@@ -1,9 +1,9 @@
 # RUNBOOK —— 换地图后的运行指令
 
-> 当前三台车：light_1 / heavy_1 / omni_1。omni 缩小，减速机制移除，任务均衡调整见 `FLEET_CONTROL_UPDATE.md`。地图修改见 `SCENE_EDITS.md`。
+> 当前四种机器人：light_1 / heavy_1 / omni_1 / g1_1。G1 双足控制、尺寸与任务更新见 `G1_INTEGRATION.md`。omni 缩小，减速机制移除，任务均衡调整见 `FLEET_CONTROL_UPDATE.md`。地图修改见 `SCENE_EDITS.md`。
 
 这份工作空间 = 原来的 `hetero_fleet_ws`（仓库地图）换成了点云扫描地图
-`geomap_final_noroof`，车队 **3 台**（light_1 / heavy_1 / omni_1，三种构型）。
+`geomap_final_noroof`，车队 **4 台**（light_1 / heavy_1 / omni_1 / g1_1，四种构型）。
 地图是怎么处理、尺寸怎么定的，见 [`MAP_SWAP.md`](MAP_SWAP.md)
 （那是换图当时的历史记录，部分数字已被后续调整覆盖；**当前状态以 [`README.md`](README.md) 为准**）。
 
@@ -17,19 +17,14 @@ cd /home/xuzhijie/hetero_fleet_geomap_ws
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 
-# 3 台车 = 3 套 Nav2 ≈ 100+ 个 ROS 节点。下面两个变量是**本机建议**：
-# 2026-09-24 实测里不加也能完整启动（3 套 Nav2 全部 active、任务正常派发），
-# 但如果同时有别的 ROS 程序在 domain 0 上发 /tf，会出现大量 TF_OLD_DATA、
-# bt_navigator 报 "Initial robot pose is not available"、目标 0.15 s 内 ABORT
-# 这类成批失败 —— 那时再加上它们：
-export HETERO_FLEET_DDS_TRANSPORTS=UDPv4   # 绕开 FastRTPS 共享内存
-export ROS_DOMAIN_ID=42                    # 与机器上其它 ROS 程序隔离
+# 四套 Nav2 使用默认共享内存 + UDPv4；各终端使用相同 ROS domain。
+unset HETERO_FLEET_DDS_TRANSPORTS
+export ROS_DOMAIN_ID=42
 ```
 
-> `ROS_DOMAIN_ID=42` 不是可选项：本机同一个 domain 上还有别的 ROS 程序在发
-> `/tf`（实测有 `link01`~`link06` 的机械臂 TF，时间戳停在 18 s），一次运行能刷出
-> 9.9 万条 `TF_OLD_DATA`，把本仿真的 TF 缓冲冲垮。换 domain 后这些错误归零。
-> 两个变量都要**在 launch 和 task_publisher 的每个终端里**设置。
+> launch、task_publisher 和查询终端都使用同一个 ROS_DOMAIN_ID。
+> 当前启动流程默认使用共享内存 + UDPv4；强制 UDPv4 会增加服务发现负担，
+> 只有明确遇到共享内存故障时才使用 HETERO_FLEET_DDS_TRANSPORTS=UDPv4。
 
 * 不 source `install/setup.bash` 时 `ros2 run hetero_fleet_scheduler ...` 找不到包。
 * 本机 conda 的 python3.14 抢 PATH，编译接口需要系统 python 3.12；根目录的
@@ -51,7 +46,7 @@ source install/setup.bash
 ## 2. 启动
 
 ```bash
-# 全栈：Gazebo GUI + RViz + 3 套 Nav2 + fleet_manager
+# 全栈：Gazebo GUI + RViz + 4 套 Nav2 + fleet_manager
 ros2 launch hetero_fleet_bringup bringup.launch.py
 
 # 省资源模式（长跑建议）
@@ -103,7 +98,7 @@ ros2 action list | grep navigate_to_pose        # 期望 3 条
 | charger_C | ( 2.70,-0.85) | 0.70 |
 | charger_D | ( 4.20,-0.85) | 0.70 |
 
-这些坐标全部经过 `tools/verify_scene.py` 校验：在自由格上、净空足够三种机型
+这些坐标全部经过 `tools/verify_scene.py` 校验：在自由格上、净空足够四种机型
 （heavy 的校验半径最大，约 0.61 m），各车型的出生点和任务点均在可连通区域内。
 三个充电位分别位于 x=-0.30、2.70、4.20 m。
 
@@ -113,6 +108,7 @@ ros2 action list | grep navigate_to_pose        # 期望 3 条
 | 机器人 | 充电位 |
 | --- | --- |
 | light_1 | charger_A (-0.30,-0.75) 排头（西端） |
+| g1_1 | charger_B (1.20,-0.80) |
 | heavy_1 | charger_C ( 2.70,-0.85) |
 | omni_1 | charger_D ( 4.20,-0.85) 排尾（东端） |
 
@@ -145,8 +141,8 @@ ros2 topic pub --once /task_request hetero_fleet_msgs/msg/Task \
 
 * `required_capability`：`light_payload` | `heavy_payload` | `narrow_aisle` |
   `precise_docking` | `omnidirectional` | `""`（空 = 不限）
-* 车队（3 台）：`light_1` 20 kg & 0.70 m/s；`heavy_1` 150 kg & 0.45 m/s；
-  `omni_1` 90 kg & 0.55 m/s（麦轮，可横移）
+* 车队（4 台）：`light_1` 20 kg & 0.70 m/s；`heavy_1` 150 kg & 0.45 m/s；
+  `omni_1` 90 kg & 0.55 m/s（麦轮，可横移）；`g1_1` 5 kg & 0.40 m/s（双足）
 * 任务 `id` 重复会被忽略（日志出现 `duplicate task id`）
 
 ## 4.5 全部任务做完之后回充电位
@@ -252,7 +248,7 @@ cat metrics/tasks.csv
 ```
 
 RViz 左侧 `task_markers` 显示每台车的状态块（固定在地图四角：
-light_1 左上、light_2 右上、heavy_1 左下、omni_1 右下；字号 0.6 m），
+light_1 左上、heavy_1 右上、omni_1 左下、g1_1 右下；字号 0.6 m），
 以及每条任务的线段与状态标签。
 
 调整面板位置/字号（不必改代码）：
@@ -264,7 +260,7 @@ ros2 run hetero_fleet_scheduler fleet_manager --ros-args \
   -p status_panel_text_height:=0.6
 ```
 
-面板默认布局：三台车分配矩形的角位，再往矩形中心内缩 `status_panel_inset_m`
+面板默认布局：四台机器人分配矩形的角位，再往矩形中心内缩 `status_panel_inset_m`
 （默认 2.6 m）——直接钉在角上会落在未扫描的黑色区域里，和地图完全脱开。
 这个矩形默认贴着地图边界（x -11.0~14.4，y -3.0~6.9），所以三个块都在地图内、
 且离最近的任务点 2.1~7.5 m，不会压住机器人正在作业的托盘。要单独挪某一块：
