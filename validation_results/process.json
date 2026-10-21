@@ -1,0 +1,16 @@
+{
+  "launch_pid": 382643,
+  "mode": "cbs",
+  "domain": 68,
+  "gz_partition": "huaxue304_C_cbs_01",
+  "command": [
+    "ros2",
+    "launch",
+    "hetero_fleet_bringup",
+    "bringup.launch.py",
+    "headless:=true",
+    "rviz:=false",
+    "channels_file:=/home/ubuntu/huaxue304_C/src/hetero_fleet_scheduler/config/channels_cbs.yaml",
+    "metrics_dir:=/home/ubuntu/huaxue304_C/metrics/cbs_01"
+  ]
+}

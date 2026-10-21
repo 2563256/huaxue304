@@ -1,4 +1,4 @@
-# Scene update 2026-10-10: exact wheel geometry from doubled URDF.
+# Wheel geometry matches the URDF after the 10% uniform size reduction.
 /<robot_name>/controller_manager:
   ros__parameters:
     update_rate: 100
@@ -18,8 +18,8 @@
     left_wheel_names:  ["left_wheel_joint"]
     right_wheel_names: ["right_wheel_joint"]
 
-    wheel_separation: 0.589
-    wheel_radius: 0.124
+    wheel_separation: 1.027644230790
+    wheel_radius: 0.216346153860
 
     publish_rate: 50.0
     # Frame ids below already include the rendered robot namespace.

@@ -51,11 +51,15 @@ class TrafficCoordinator:
             current = self.encounter
             if current is not None:
                 return current if name in (current.winner, current.loser) else None
+            if robots[name].type == 'g1_humanoid':
+                return None  # G1 uses dynamic-obstacle detours, never pull-over handshakes.
             own = self.motion.get(name)
             if own is None or name not in positions:
                 return None
             for other in sorted(set(active) | set(idle)):
                 if other == name or other not in robots or other not in positions:
+                    continue
+                if robots[other].type == 'g1_humanoid':
                     continue
                 peer = self.motion.get(other)
                 key = tuple(sorted((name, other)))

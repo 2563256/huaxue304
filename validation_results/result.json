@@ -1,0 +1,416 @@
+{
+  "passed": true,
+  "scope": "Single fresh Gazebo batch; no scheduler restart, task re-ID or result merging",
+  "launch_pid": 382643,
+  "launch_start_ticks": "44593830",
+  "scenario": "/home/ubuntu/huaxue304_C/src/hetero_fleet_scheduler/config/tasks/demo_10.yaml",
+  "scenario_sha256": "5a1a47e9cef28ad36bfb39ad8d27d0756bbdf70744af002ff6158f1dc113f676",
+  "active_drive_robots": [
+    "heavy_1",
+    "light_1",
+    "omni_1"
+  ],
+  "interval_wall_sec": 8.0,
+  "wall_to_report_sec": 3014.707,
+  "ros_domain_id": "68",
+  "gz_partition": "huaxue304_C_cbs_01",
+  "metrics": {
+    "summary": {
+      "tasks_submitted": 10,
+      "tasks_completed": 10,
+      "tasks_failed": 0,
+      "completion_rate": 1.0,
+      "mean_completion_time_sec": 727.706,
+      "makespan_sec": 1501.114,
+      "total_distance_m": 182.376,
+      "total_energy_wh": 306.991,
+      "utilisation": 0.1628,
+      "reschedule_count": 19,
+      "tardy_tasks": 0,
+      "per_robot": {
+        "light_1": {
+          "tasks_completed": 3,
+          "distance_m": 53.667,
+          "energy_wh": 49.11,
+          "battery_pct": 86.6,
+          "busy_sec": 243.745
+        },
+        "heavy_1": {
+          "tasks_completed": 2,
+          "distance_m": 36.91,
+          "energy_wh": 106.263,
+          "battery_pct": 90.8,
+          "busy_sec": 183.375
+        },
+        "omni_1": {
+          "tasks_completed": 3,
+          "distance_m": 47.292,
+          "energy_wh": 61.297,
+          "battery_pct": 88.2,
+          "busy_sec": 152.93
+        },
+        "g1_1": {
+          "tasks_completed": 2,
+          "distance_m": 44.507,
+          "energy_wh": 90.321,
+          "battery_pct": 49.8,
+          "busy_sec": 397.321
+        }
+      }
+    },
+    "tasks": [
+      {
+        "task_id": "balanced_10_06",
+        "type": "transport",
+        "robot_id": "omni_1",
+        "priority": 2,
+        "payload_kg": 45.0,
+        "required_capability": "omnidirectional",
+        "created_at_sec": 118.17,
+        "assigned_at_sec": 134.0,
+        "completed_at_sec": 223.382,
+        "completion_time_sec": 105.212,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 10.697,
+        "energy_wh": 15.255
+      },
+      {
+        "task_id": "balanced_10_09",
+        "type": "transport",
+        "robot_id": "omni_1",
+        "priority": 2,
+        "payload_kg": 65.0,
+        "required_capability": "omnidirectional",
+        "created_at_sec": 132.784,
+        "assigned_at_sec": 226.001,
+        "completed_at_sec": 256.752,
+        "completion_time_sec": 123.968,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 5.741,
+        "energy_wh": 9.7827
+      },
+      {
+        "task_id": "balanced_10_02",
+        "type": "transport",
+        "robot_id": "omni_1",
+        "priority": 2,
+        "payload_kg": 30.0,
+        "required_capability": "omnidirectional",
+        "created_at_sec": 98.46,
+        "assigned_at_sec": 260.001,
+        "completed_at_sec": 292.798,
+        "completion_time_sec": 194.338,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 8.941,
+        "energy_wh": 12.1552
+      },
+      {
+        "task_id": "balanced_10_01",
+        "type": "transport",
+        "robot_id": "heavy_1",
+        "priority": 2,
+        "payload_kg": 95.0,
+        "required_capability": "heavy_payload",
+        "created_at_sec": 93.492,
+        "assigned_at_sec": 418.0,
+        "completed_at_sec": 506.122,
+        "completion_time_sec": 412.63,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 19.834,
+        "energy_wh": 60.1458
+      },
+      {
+        "task_id": "balanced_10_04",
+        "type": "transport",
+        "robot_id": "heavy_1",
+        "priority": 2,
+        "payload_kg": 110.0,
+        "required_capability": "heavy_payload",
+        "created_at_sec": 108.12,
+        "assigned_at_sec": 516.0,
+        "completed_at_sec": 611.253,
+        "completion_time_sec": 503.133,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 11.599,
+        "energy_wh": 36.2592
+      },
+      {
+        "task_id": "balanced_10_10",
+        "type": "transport",
+        "robot_id": "g1_1",
+        "priority": 2,
+        "payload_kg": 2.0,
+        "required_capability": "humanoid_transport",
+        "created_at_sec": 137.752,
+        "assigned_at_sec": 672.001,
+        "completed_at_sec": 870.683,
+        "completion_time_sec": 732.931,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 19.279,
+        "energy_wh": 39.5872
+      },
+      {
+        "task_id": "balanced_10_05",
+        "type": "transport",
+        "robot_id": "g1_1",
+        "priority": 2,
+        "payload_kg": 1.0,
+        "required_capability": "humanoid_transport",
+        "created_at_sec": 113.154,
+        "assigned_at_sec": 874.0,
+        "completed_at_sec": 1072.639,
+        "completion_time_sec": 959.485,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 13.657,
+        "energy_wh": 27.5903
+      },
+      {
+        "task_id": "balanced_10_03",
+        "type": "transport",
+        "robot_id": "light_1",
+        "priority": 2,
+        "payload_kg": 8.0,
+        "required_capability": "light_payload",
+        "created_at_sec": 103.525,
+        "assigned_at_sec": 1344.0,
+        "completed_at_sec": 1464.965,
+        "completion_time_sec": 1361.44,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 29.144,
+        "energy_wh": 25.89
+      },
+      {
+        "task_id": "balanced_10_08",
+        "type": "transport",
+        "robot_id": "light_1",
+        "priority": 2,
+        "payload_kg": 16.0,
+        "required_capability": "light_payload",
+        "created_at_sec": 127.814,
+        "assigned_at_sec": 1468.0,
+        "completed_at_sec": 1540.175,
+        "completion_time_sec": 1412.361,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 9.637,
+        "energy_wh": 9.7329
+      },
+      {
+        "task_id": "balanced_10_07",
+        "type": "transport",
+        "robot_id": "light_1",
+        "priority": 2,
+        "payload_kg": 12.0,
+        "required_capability": "light_payload",
+        "created_at_sec": 123.045,
+        "assigned_at_sec": 1544.001,
+        "completed_at_sec": 1594.606,
+        "completion_time_sec": 1471.561,
+        "deadline_sec": 1800.0,
+        "tardy": 0,
+        "requeue_count": 0,
+        "distance_m": 8.187,
+        "energy_wh": 7.7921
+      }
+    ]
+  },
+  "completed_task_ids": [
+    "balanced_10_01",
+    "balanced_10_02",
+    "balanced_10_03",
+    "balanced_10_04",
+    "balanced_10_05",
+    "balanced_10_06",
+    "balanced_10_07",
+    "balanced_10_08",
+    "balanced_10_09",
+    "balanced_10_10"
+  ],
+  "live_status": {
+    "header": {
+      "stamp": {
+        "sec": 1604,
+        "nanosec": 0
+      },
+      "frame_id": "map"
+    },
+    "robots": [
+      {
+        "id": "light_1",
+        "type": "light_diff_amr",
+        "pose": {
+          "x": 7.097783753572749,
+          "y": 4.287901598490234,
+          "theta": -2.8359175945537647
+        },
+        "status": "CHARGING",
+        "battery_pct": 86.58314514160156,
+        "battery_capacity_wh": 480.0,
+        "payload_capacity_kg": 20.0,
+        "current_payload_kg": 0.0,
+        "max_speed": 0.699999988079071,
+        "capabilities": [
+          "light_payload",
+          "narrow_aisle"
+        ],
+        "estimated_idle_time_sec": 0.0,
+        "current_task_id": "",
+        "odom_distance_m": 53.66741180419922,
+        "energy_consumed_wh": 49.11006546020508,
+        "tasks_completed": 3
+      },
+      {
+        "id": "heavy_1",
+        "type": "heavy_diff_amr",
+        "pose": {
+          "x": 2.74571181706297,
+          "y": -0.36339311672908803,
+          "theta": -0.06517335136514896
+        },
+        "status": "IDLE",
+        "battery_pct": 90.7724380493164,
+        "battery_capacity_wh": 1200.0,
+        "payload_capacity_kg": 150.0,
+        "current_payload_kg": 0.0,
+        "max_speed": 0.44999998807907104,
+        "capabilities": [
+          "heavy_payload"
+        ],
+        "estimated_idle_time_sec": 0.0,
+        "current_task_id": "",
+        "odom_distance_m": 36.91025161743164,
+        "energy_consumed_wh": 106.26347351074219,
+        "tasks_completed": 2
+      },
+      {
+        "id": "omni_1",
+        "type": "omni_mecanum_amr",
+        "pose": {
+          "x": 4.729163907332299,
+          "y": -0.4164281607076376,
+          "theta": -0.05843140999613688
+        },
+        "status": "IDLE",
+        "battery_pct": 88.17707824707031,
+        "battery_capacity_wh": 640.0,
+        "payload_capacity_kg": 90.0,
+        "current_payload_kg": 0.0,
+        "max_speed": 0.550000011920929,
+        "capabilities": [
+          "precise_docking",
+          "omnidirectional"
+        ],
+        "estimated_idle_time_sec": 0.0,
+        "current_task_id": "",
+        "odom_distance_m": 47.29167938232422,
+        "energy_consumed_wh": 61.296695709228516,
+        "tasks_completed": 3
+      },
+      {
+        "id": "g1_1",
+        "type": "g1_humanoid",
+        "pose": {
+          "x": 1.1832456091602577,
+          "y": -1.0952813624548599,
+          "theta": -0.797937592064904
+        },
+        "status": "IDLE",
+        "battery_pct": 49.821876525878906,
+        "battery_capacity_wh": 180.0,
+        "payload_capacity_kg": 5.0,
+        "current_payload_kg": 0.0,
+        "max_speed": 0.30000001192092896,
+        "capabilities": [
+          "humanoid_transport",
+          "manual_handling"
+        ],
+        "estimated_idle_time_sec": 0.0,
+        "current_task_id": "",
+        "odom_distance_m": 44.5068244934082,
+        "energy_consumed_wh": 90.32062530517578,
+        "tasks_completed": 2
+      }
+    ],
+    "queue": [],
+    "queue_length": 0,
+    "tasks_pending": 0,
+    "tasks_active": 0,
+    "tasks_completed": 10,
+    "tasks_failed": 0,
+    "makespan_sec": 1501.114013671875,
+    "reschedule_count": 19,
+    "total_distance_m": 182.37615966796875,
+    "total_energy_wh": 306.9908447265625
+  },
+  "live_poses": {
+    "omni_1": [
+      4.729163907332299,
+      -0.4164281607076376,
+      -0.05843140999613688
+    ],
+    "light_1": [
+      5.993007293609338,
+      4.219718851735141,
+      -3.016338139928488
+    ],
+    "heavy_1": [
+      2.74571181706297,
+      -0.36339311672908803,
+      -0.06517335136514896
+    ],
+    "g1_1": [
+      1.235907632528457,
+      -1.0544408645462962,
+      -0.8006398509511515
+    ]
+  },
+  "mapf": {
+    "mode": "cbs",
+    "requests": 53,
+    "rejected": 0,
+    "alternative_routes_selected": 0,
+    "last_solver": {
+      "mode": "cbs",
+      "expanded": 1,
+      "generated": 1,
+      "weight": 1.0,
+      "catalogue_sizes": {
+        "light_1": 1
+      },
+      "reason": "solved",
+      "cost_ticks": 34,
+      "lower_bound_ticks": 34,
+      "cost_ratio": 1.0,
+      "learned_expansions": 0,
+      "elapsed_sec": 0.00023932202020660043
+    },
+    "epoch": 1599.15
+  },
+  "physical_body_audit": {
+    "collision_samples": 0,
+    "pose_samples": {
+      "light_1": 58363,
+      "heavy_1": 58360,
+      "omni_1": 58367,
+      "g1_1": 58362
+    },
+    "scope": "Actual planar physical footprints without optional planner padding"
+  }
+}

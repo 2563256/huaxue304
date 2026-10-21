@@ -1,20 +1,9 @@
-# Scene update 2026-10-10: measured 2x footprint; inflation remains outside padded inscribed radius.
-# Nav2 parameters for the HEAVY differential AMR (0.428 x 0.322 m, 0.45 m/s).
-#
-# All three robot types share this file's structure; what differs is:
-#   - inflation_radius / cost_scaling_factor  (how much clearance it keeps)
-#   - max_vel_x / max_vel_theta               (how fast it is allowed to go)
-#   - whether lateral motion is allowed       (diff cannot strafe)
-#
-# Rescaled for the scanned office map: the fleet is 0.36-0.49x the warehouse
-# size so that every type fits the ring corridor of maps/geomap.pgm. The heavy
-# AMR is the widest (0.428 x 0.322 vs 0.403 x 0.317 for the light one) and
-# therefore reserves the most length clearance: 0.161 + 0.20 = 0.361 m; the
-# omni reserves the most overall at 0.176 + 0.21 = 0.386 m. See MAP_SWAP.md
-# for the measurements and robot_profiles.yaml for where the footprint comes
-# from (it is the true collision outline, wheels included).
-#
-# The launch file rewrites <robot_name> to the concrete instance.
+# State Lattice navigation, enlarged fleet (2026-10-14).
+# Physical footprint 1.4927886 x 1.125 m; global/local/swept geometry match.
+# Control sets: 0.05 m, 64 headings, 0.50 m curve radius, with rotations.
+# MPPI follows path orientations; the omni model also permits lateral moves.
+# Inflation is a soft cost field outside the actual padded rectangular body.
+# The launch file resolves <robot_name>/<bringup_share> and validates the lattice.
 
 # AMCL runs one filter per robot against the shared map. The frame ids MUST be
 # namespaced: the TF tree contains <robot_name>/odom and
@@ -56,8 +45,8 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"]
-    controller_plugins: ["FollowPath"]
+    goal_checker_plugins: ["general_goal_checker", "task_goal_checker"]
+    controller_plugins: ["FollowPath", "TaskFollowPath"]
 
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
@@ -72,7 +61,13 @@ controller_server:
       xy_goal_tolerance: 0.20
       yaw_goal_tolerance: 0.15
 
-    FollowPath:
+    task_goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      stateful: false
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 3.141593
+
+    FollowPath: &path_controller
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 56
       model_dt: 0.05
@@ -105,21 +100,21 @@ controller_server:
         cost_power: 1
         cost_weight: 5.0
         threshold_to_consider: 1.4
-      GoalAngleCritic:
+      GoalAngleCritic: &goal_angle
         enabled: true
         cost_power: 1
         cost_weight: 3.0
         threshold_to_consider: 0.5
       PreferForwardCritic:
-        enabled: true
+        enabled: false
         cost_power: 1
         cost_weight: 5.0
         threshold_to_consider: 0.5
       ObstaclesCritic:
         enabled: true
         cost_power: 1
-        repulsion_weight: 1.5
-        critical_weight: 20.0
+        repulsion_weight: 0.75
+        critical_weight: 10.0
         # Check the full current body, including corners, against moving robots.
         consider_footprint: true
         collision_cost: 10000.0
@@ -131,9 +126,9 @@ controller_server:
         cost_weight: 14.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 4
-        threshold_to_consider: 0.5
-        offset_from_furthest: 20
-        use_path_orientations: false
+        threshold_to_consider: 0.15
+        offset_from_furthest: 4
+        use_path_orientations: true
       PathFollowCritic:
         enabled: true
         cost_power: 1
@@ -147,7 +142,13 @@ controller_server:
         offset_from_furthest: 4
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
-        mode: 0
+        mode: 2
+
+    TaskFollowPath:
+      <<: *path_controller
+      GoalAngleCritic:
+        <<: *goal_angle
+        enabled: false
 
 local_costmap:
   local_costmap:
@@ -163,9 +164,9 @@ local_costmap:
       resolution: 0.05
       # Rectangular footprint instead of a circumscribed circle; see the long
       # note in nav2_params_omni.yaml. The polygon's inscribed radius is the
-      # 0.161 m half-width, so a legal stance next to furniture is not reported
+      # 0.625 m half-width, so a legal stance next to furniture is not reported
       # as a lethal cell for the robot's own centre.
-      footprint: "[[0.4278, 0.3224], [0.4278, -0.3224], [-0.4278, -0.3224], [-0.4278, 0.3224]]"
+      footprint: '[[0.7463943, 0.5625], [0.7463943, -0.5625], [-0.7463943, -0.5625], [-0.7463943, 0.5625]]'
       # 3 cm of padding on top of the true outline. Without it the costmap's
       # lethal radius equals the physical contact distance, so a robot that
       # brushes a wall sits inside its own lethal cell and MPPI finds no
@@ -174,7 +175,14 @@ local_costmap:
       # the margin the old undersized footprint was accidentally providing.
       footprint_padding: 0.03
       always_send_full_costmap: true
-      plugins: ["obstacle_layer", "robot_obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "robot_obstacle_layer", "inflation_layer"]
+      # Keep mapped walls visible to MPPI even without a physical lidar return.
+      static_layer:
+        plugin: nav2_costmap_2d::StaticLayer
+        map_topic: /<robot_name>/map
+        map_subscribe_transient_local: true
+        subscribe_to_updates: false
+        footprint_clearing_enabled: false
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -192,26 +200,26 @@ local_costmap:
         # Other vehicles, synthesised - local costmap only, see the note in
         # nav2_params_light.yaml.
       robot_obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
+        plugin: "hetero_fleet_navigation::SnapshotObstacleLayer"
         enabled: true
         combination_method: 1
         observation_sources: robot_obstacles
         robot_obstacles:
-          topic: /<robot_name>/robot_obstacles
+          topic: /<robot_name>/robot_planning_points
           max_obstacle_height: 2.0
-          clearing: true
+          clearing: false
           marking: true
           inf_is_valid: true
           observation_persistence: 0.0
-          data_type: "LaserScan"
-          raytrace_max_range: 12.0
+          data_type: "PointCloud2"
+          raytrace_max_range: 50.0
           raytrace_min_range: 0.0
-          obstacle_max_range: 10.0
+          obstacle_max_range: 50.0
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 1.5
-        inflation_radius: 0.60
+        inflation_radius: 1.20
       always_reset_initial_costmap: false
       # Local rolling window: unobserved cells are free (see the note in
       # nav2_params_light.yaml - MPPI treats NO_INFORMATION as an obstacle, so
@@ -229,14 +237,10 @@ global_costmap:
       always_send_full_costmap: true
       global_frame: map
       robot_base_frame: <robot_name>/base_footprint
-      footprint: "[[0.4278, 0.3224], [0.4278, -0.3224], [-0.4278, -0.3224], [-0.4278, 0.3224]]"
-      # 3 cm of padding on top of the true outline. Without it the costmap's
-      # lethal radius equals the physical contact distance, so a robot that
-      # brushes a wall sits inside its own lethal cell and MPPI finds no
-      # feasible rollout ("Optimizer fail to compute path") - measured as 42
-      # failures and a wedged fleet in one run. The padding is what restores
-      # the margin the old undersized footprint was accidentally providing.
-      footprint_padding: 0.03
+      footprint: '[[0.7463943, 0.5625], [0.7463943, -0.5625], [-0.7463943, -0.5625], [-0.7463943, 0.5625]]'
+      # Same physical body as the local costmap and State Lattice sweep.
+      # Local control uses this vehicle\'s measured body and smaller padding.
+      footprint_padding: 0.03 # Match the physical swept body.
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "robot_obstacle_layer", "inflation_layer"]
@@ -258,26 +262,26 @@ global_costmap:
           obstacle_max_range: 10.0
           obstacle_min_range: 0.0
       robot_obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
+        plugin: "hetero_fleet_navigation::SnapshotObstacleLayer"
         enabled: true
         combination_method: 1
         observation_sources: robot_obstacles
         robot_obstacles:
-          topic: /<robot_name>/robot_obstacles
+          topic: /<robot_name>/robot_planning_points
           max_obstacle_height: 2.0
-          clearing: true
+          clearing: false
           marking: true
           inf_is_valid: true
           observation_persistence: 0.0
-          data_type: "LaserScan"
-          raytrace_max_range: 12.0
+          data_type: "PointCloud2"
+          raytrace_max_range: 50.0
           raytrace_min_range: 0.0
-          obstacle_max_range: 10.0
+          obstacle_max_range: 50.0
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 1.5
-        inflation_radius: 0.60
+        inflation_radius: 1.20
       transform_tolerance: 0.5
 
 planner_server:
@@ -285,17 +289,31 @@ planner_server:
     use_sim_time: true
     # Expected computation cadence only; the BT controls replanning triggers.
     expected_planner_frequency: 0.5
-    planner_plugins: ["GridBased"]
-    GridBased:
-      plugin: "nav2_smac_planner::SmacPlanner2D"
-      tolerance: 0.125
-      downsample_costmap: false
-      allow_unknown: true
+    planner_plugins: ["GridBased", "TaskGridBased", "RetreatGridBased"]
+    GridBased: &spatial_planner
+      plugin: "hetero_fleet_navigation::SweptLattice"
+      lattice_filepath: <bringup_share>/config/lattice/diff_64.json
+      allow_reverse_expansion: true
+      swept_footprint: '[[0.7463943, 0.5625], [0.7463943, -0.5625], [-0.7463943, -0.5625], [-0.7463943, 0.5625]]'
+      swept_footprint_padding: 0.03
+      rotation_penalty: 2.0
+      heuristic_weight: 1.5
+      tolerance: 0.05
+      allow_unknown: false
       max_iterations: 1000000
-      max_on_approach_iterations: 1000
-      max_planning_time: 2.0
-      cost_travel_multiplier: 2.0
-      use_final_approach_orientation: false
+      max_planning_time: 8.0
+      reverse_penalty: 2.0
+      cost_penalty: 2.0
+      # Preserve the collision-checked SE2 poses and direction changes.
+
+    TaskGridBased:
+      <<: *spatial_planner
+      match_goal_heading: false
+    RetreatGridBased:
+      <<: *spatial_planner
+      match_goal_heading: true
+      reverse_penalty: 1.0
+
 
 smoother_server:
   ros__parameters:
@@ -354,7 +372,7 @@ collision_monitor:
     use_sim_time: true
     base_frame_id: <robot_name>/base_footprint
     odom_frame_id: <robot_name>/odom
-    cmd_vel_in_topic: cmd_vel_smoothed
+    cmd_vel_in_topic: cmd_vel_reserved
     cmd_vel_out_topic: cmd_vel
     transform_tolerance: 0.2
     source_timeout: 1.0
@@ -373,20 +391,19 @@ collision_monitor:
       - reverse
       - turning
       forward:
-        points: '[[0.5478, 0.3724], [0.5478, -0.3724], [0, -0.3724], [0, 0.3724]]'
+        points: '[[0.8663943, 0.6125], [0.8663943, -0.6125], [0.0, -0.6125], [0.0, 0.6125]]'
         linear_min: 0.02
         linear_max: 2.0
         theta_min: -0.1
         theta_max: 0.1
       reverse:
-        points: '[[0, 0.3724], [0, -0.3724], [-0.5478, -0.3724], [-0.5478, 0.3724]]'
+        points: '[[0.0, 0.6125], [0.0, -0.6125], [-0.8663943, -0.6125], [-0.8663943, 0.6125]]'
         linear_min: -2.0
         linear_max: -0.02
         theta_min: -0.1
         theta_max: 0.1
       turning:
-        points: '[[0.4578, 0.3524], [0.4578, -0.3524], [-0.4578, -0.3524], [-0.4578,
-          0.3524]]'
+        points: '[[0.7763943, 0.5925], [0.7763943, -0.5925], [-0.7763943, -0.5925], [-0.7763943, 0.5925]]'
         linear_min: -2.0
         linear_max: 2.0
         theta_min: -100.0

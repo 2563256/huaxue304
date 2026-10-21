@@ -27,6 +27,8 @@ setup(
         "console_scripts": [
             # The node bringup.launch.py expects.
             "fleet_manager = hetero_fleet_scheduler.fleet_manager:main",
+            "mapf_router = hetero_fleet_scheduler.mapf_router:main",
+            "channel_reservations = hetero_fleet_scheduler.channel_node:main",
             # Standalone task injector, useful without the full launch.
             "task_publisher = hetero_fleet_scheduler.task_publisher:main",
         ],

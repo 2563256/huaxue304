@@ -3,7 +3,9 @@
 
 Teammate scans have their own 10 Hz timer and use base_footprint, independent
 of lidar height/offset and of whether Gazebo's physical scan has arrived.
-Both local and global costmaps see every body, including moving teammates.
+Costmaps consume filled PointCloud2 snapshots of ALL known peer bodies.
+Nearest-return LaserScans remain available for contact/collision monitoring;
+they must not be used as complete fleet geometry because they occlude peers.
 The navigation tree reuses valid paths and replans when a teammate blocks them.
 """
 import copy
@@ -16,7 +18,9 @@ from ament_index_python.packages import get_package_share_directory
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, PointCloud2
+from sensor_msgs_py.point_cloud2 import create_cloud_xyz32
+from std_msgs.msg import Header
 
 
 def rectangle_returns(angles, center_x, center_y, yaw, length, width,
@@ -44,6 +48,14 @@ def rectangle_returns(angles, center_x, center_y, yaw, length, width,
         lo=np.maximum(lo,near);hi=np.minimum(hi,far)
     hit=(hi>=np.maximum(lo,0.))&(lo<=range_max)
     return np.where(hit,np.clip(lo,range_min,range_max),np.inf)
+
+
+def rectangle_points(center_x, center_y, yaw, length, width, spacing=.04):
+    """Fill every known peer body; visibility from the observer is irrelevant."""
+    xs=np.linspace(-length/2, length/2, max(2, math.ceil(length/spacing)+1))
+    ys=np.linspace(-width/2, width/2, max(2, math.ceil(width/spacing)+1))
+    x,y=np.meshgrid(xs,ys);x=x.ravel();y=y.ravel();c,s=math.cos(yaw),math.sin(yaw)
+    return np.column_stack((center_x+c*x-s*y,center_y+s*x+c*y,np.full(x.size,.1)))
 
 
 def update_stationary(state, pose, now, linear_speed=0., angular_speed=0.):
@@ -80,12 +92,13 @@ class ScanFrameRelay(Node):
         self.rate=float(self.declare_parameter('publish_rate_hz',10.0).value)
         self.padding=float(self.declare_parameter('teammate_padding',0.12).value)
         self.angles=np.arange(self.samples)*2*math.pi/self.samples-math.pi
-        self.pubs={};self.obstacle_pubs={};self.contact_pubs={};self.planning_pubs={}
+        self.pubs={};self.obstacle_pubs={};self.contact_pubs={};self.planning_pubs={};self.point_pubs={}
         for name in self.robots:
             self.pubs[name]=self.create_publisher(LaserScan,f'/{name}/scan_fixed',10)
             self.obstacle_pubs[name]=self.create_publisher(LaserScan,f'/{name}/robot_obstacles',10)
             self.contact_pubs[name]=self.create_publisher(LaserScan,f'/{name}/robot_contact',10)
             self.planning_pubs[name]=self.create_publisher(LaserScan,f'/{name}/robot_planning_obstacles',10)
+            self.point_pubs[name]=self.create_publisher(PointCloud2,f'/{name}/robot_planning_points',10)
             self.create_subscription(LaserScan,f'/{name}/scan',lambda m,n=name:self.on_scan(m,n),qos_profile_sensor_data)
             self.create_subscription(Odometry,f'/{name}/odom',lambda m,n=name:self.on_odom(n,m),qos_profile_sensor_data)
         self.create_timer(1./self.rate,self.publish_robot_obstacles)
@@ -113,11 +126,14 @@ class ScanFrameRelay(Node):
             ex,ey,eyaw=ego['pose'];c,s=math.cos(eyaw),math.sin(eyaw)
             ranges=np.full(self.samples,np.inf);contact_ranges=np.full(self.samples,np.inf)
             planning_ranges=np.full(self.samples,np.inf)
+            body_points=[]
             for other,state in self.robots.items():
                 if other==name or state['pose'] is None:continue
                 ox,oy,oyaw=state['pose'];dx,dy=ox-ex,oy-ey
                 bx,by=c*dx+s*dy,-s*dx+c*dy
                 length,width=state['footprint']
+                body_points.append(rectangle_points(bx,by,oyaw-eyaw,
+                    length+2*self.padding,width+2*self.padding))
                 returns=rectangle_returns(self.angles,bx,by,oyaw-eyaw,
                     length+2*self.padding,width+2*self.padding,.01,self.max_range)
                 ranges=np.minimum(ranges,returns)
@@ -135,6 +151,9 @@ class ScanFrameRelay(Node):
             self.contact_pubs[name].publish(contact)
             planning=copy.deepcopy(out);planning.ranges=planning_ranges.tolist()
             self.planning_pubs[name].publish(planning)
+            points=np.concatenate(body_points) if body_points else np.empty((0,3))
+            header=Header(stamp=stamp,frame_id=f'{name}/base_footprint')
+            self.point_pubs[name].publish(create_cloud_xyz32(header,points.astype(np.float32,copy=False)))
 
 
 def main():
