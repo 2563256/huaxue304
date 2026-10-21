@@ -13,8 +13,8 @@ from scipy import ndimage,sparse
 from scipy.sparse.csgraph import dijkstra
 
 ROOT=Path(__file__).resolve().parents[1]
-PICKS=[(10.60,-.43),(1.70,4.22),(9.10,4.22),(-2.0,4.22),(5.8,.05)]
-DROPS=[(8.10,-.43),(5.40,4.22),(11.,4.22),(7.0,4.22),(0.0,4.1)]
+PICKS=[(10.60,-.43),(1.70,4.22),(9.10,4.22),(-2.0,4.22),(5.8,-.20)]
+DROPS=[(8.10,-.43),(5.40,4.22),(11.,4.22),(7.0,4.22),(0.0,4.22)]
 CAPS=['light_payload','heavy_payload','omnidirectional','humanoid_transport']
 PAYLOADS=[[8.,12.,16.],[95.,110.,120.],[30.,45.,65.],[1.,2.,3.]]
 

@@ -11,6 +11,7 @@
   <depend>hetero_fleet_msgs</depend>
   <depend>hetero_fleet_description</depend>
   <depend>nav2_msgs</depend>
+  <depend>action_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>

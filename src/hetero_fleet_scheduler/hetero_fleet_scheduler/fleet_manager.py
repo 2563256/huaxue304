@@ -33,6 +33,7 @@ Design notes worth knowing before reading:
 from __future__ import annotations
 
 import math
+import json
 import os
 import threading
 import time
@@ -42,10 +43,11 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Pose2D as Pose2DMsg
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import BackUp, NavigateToPose
+from nav2_msgs.action import BackUp, NavigateToPose, ComputePathToPose
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 from rclpy.action import ActionClient
+from rclpy.clock import Clock, ClockType
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -55,6 +57,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from hetero_fleet_msgs.msg import FleetStatus, RobotState as RobotStateMsg, Task as TaskMsg
 
 from .cost import CostWeights, evaluate, select_robot
+from .geometry import rectangle_is_free, rectangles_overlap
+from .reservations import intersects
 from .metrics import MetricsRecorder
 from .traffic import Encounter, TrafficCoordinator
 from .task_model import (
@@ -168,6 +172,7 @@ class FleetManager(Node):
         # Outer watchdog uses ROS time, so slower Gazebo does not consume the
         # navigation window. Nav2 first gets its local 15 s progress check and
         # recovery; the scheduler intervenes after 45 s of genuine stagnation.
+        self.declare_parameter("channel_wait_timeout_sec", 300.0)
         self.declare_parameter("stall_timeout_sec", 45.0)
         self.declare_parameter("stall_move_eps_m", 0.10)
         self.declare_parameter("stall_yaw_weight", 0.30)
@@ -256,8 +261,21 @@ class FleetManager(Node):
         sched = profiles.get("scheduler", {})
         self.weights = CostWeights.from_dict(sched.get("weights", {}))
         self.min_battery_pct = float(sched.get("min_battery_pct", 15.0))
-        self.load_time = float(sched.get("load_time_sec", 5.0))
-        self.unload_time = float(sched.get("unload_time_sec", 5.0))
+        self.load_time = float(sched.get("load_time_sec", 3.0))
+        self.unload_time = float(sched.get("unload_time_sec", 3.0))
+        self.live_pose_stamps = {}
+        # Optional forecourt admission order. Keep one wheel platform admitted
+        # until its queued work is finished AND it has physically parked.
+        # G1 does not participate in this admission or corridor ownership.
+        self.wheel_dispatch_order = list(sched.get('wheel_dispatch_order', []))
+        self.wheel_batch_collect_sec = float(sched.get('wheel_batch_collect_sec', 0.))
+        self._wheel_batch_robot = None
+        self._wheel_batch_started = None
+        self.wheel_yield_to_g1 = bool(sched.get('wheel_yield_to_g1', False))
+        self._dispatch_path_cache = {}
+        self._dispatch_probe_busy = set()
+        self.startup_clearance_robots = {r['name'] for r in self.fleet_cfg
+                                        if r.get('startup_clearance', False)}
 
         # --- fleet state --------------------------------------------------
         self.robots: dict[str, RobotState] = {}
@@ -270,6 +288,7 @@ class FleetManager(Node):
         # predates the `charger` key, so an old YAML still runs.
         self.charger_pose: dict[str, Pose2D] = {}
         self.charger_route: dict[str, list[Pose2D]] = {}
+        self.idle_clearance_pose: dict[str, Pose2D] = {}
         self.charger_exit: dict[str, Pose2D] = {}
         # The same ground-truth pose as self.spawn_pose's anchor implies, but
         # refreshed for *every* odom message rather than only while the robot
@@ -298,6 +317,8 @@ class FleetManager(Node):
                 Pose2D(float(p[0]), float(p[1]), float(p[2]))
                 for p in entry.get("charger_route", [])
             ]
+            if entry.get('idle_clearance'):
+                self.idle_clearance_pose[entry['name']] = Pose2D(*map(float, entry['idle_clearance']))
             if math.hypot(hx - sx, hy - sy) > 0.05:
                 # Odometry is anchored at `spawn`, so the two MUST agree: if
                 # they do not, every position the manager reports for this
@@ -385,9 +406,35 @@ class FleetManager(Node):
         self._nav_feedback: dict[str, dict] = {}
         self._nav_targets = {}
         self.backup_clients: dict[str, ActionClient] = {}
+        self.planner_clients: dict[str, ActionClient] = {}
         self._recovery_lock = threading.Lock()
         self.traffic = TrafficCoordinator()
+        self.channel_wait_timeout = float(self.get_parameter("channel_wait_timeout_sec").value)
+        self._channel_wait_states = {}
+        self._channel_snapshot = ({}, -math.inf)
+        self._channel_counts = {}
+        self._channel_yield_waits = {}
+        self._channel_lock = threading.Lock()
+        self._channel_intent_publishers = {}
+        self._channel_transport_publishers = {}
+        self._task_hold_publishers = {}
+        intent_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                                reliability=QoSReliabilityPolicy.RELIABLE)
+        self.create_subscription(String, '/channel_reservations', self._on_channel_snapshot,
+                                 intent_qos, callback_group=self.cb_group)
         for name in self.robots:
+            self.planner_clients[name] = ActionClient(
+                self, ComputePathToPose, f"/{name}/compute_path_to_pose", callback_group=self.cb_group)
+            self._channel_transport_publishers[name] = self.create_publisher(
+                Bool, f"/{name}/reservation_transport_active", intent_qos)
+            self._channel_intent_publishers[name] = self.create_publisher(
+                Bool, f"/{name}/reservation_active", intent_qos)
+            self._task_hold_publishers[name] = self.create_publisher(
+                Bool, f"/{name}/task_hold", intent_qos)
+            self._task_hold_publishers[name].publish(Bool(data=False))
+            self.create_subscription(Bool, f"/{name}/channel_wait",
+                                     lambda msg, n=name: self._on_channel_wait(n, msg), 1,
+                                     callback_group=self.cb_group)
             self.backup_clients[name] = ActionClient(
                 self, BackUp, f"/{name}/backup", callback_group=self.cb_group)
             self.nav_clients[name] = ActionClient(
@@ -450,6 +497,11 @@ class FleetManager(Node):
             name: None for name in self.robots
         }
 
+        # Keep queued intent alive during a cancelled Nav2 goal and while ROS
+        # time pauses. A crashed manager must not leave a phantom request.
+        self._channel_wall_clock = Clock(clock_type=ClockType.STEADY_TIME)
+        self.create_timer(.5, self._publish_channel_intents, clock=self._channel_wall_clock,
+                          callback_group=self.cb_group)
         # --- timers --------------------------------------------------------
         self.create_timer(2.0, self._tick, callback_group=self.cb_group)
         self.create_timer(
@@ -544,6 +596,7 @@ class FleetManager(Node):
                 "ox": float(meta["origin"][0]),
                 "oy": float(meta["origin"][1]),
                 "negate": int(meta.get("negate", 0)),
+                "free_thresh": float(meta.get("free_thresh", 0.196)),
             }
         except Exception as exc:  # noqa: BLE001
             self.get_logger().warn(f"zone slot map unusable ({exc!r}); unchecked")
@@ -602,7 +655,16 @@ class FleetManager(Node):
                     continue
                 x = point.x + dx * spacing
                 y = point.y + dy * spacing
-                if not self._slot_is_free(x, y, clearance):
+                occupancy = getattr(self, '_occupancy', None)
+                profile = getattr(self, 'types', {}).get(robot.type)
+                if occupancy is not None and profile is not None:
+                    # Slot feasibility is heading-dependent, like State Lattice.
+                    # An inscribed task marker may fit the complete rectangle
+                    # while its all-orientations circumcircle intersects a wall.
+                    if not rectangle_is_free(occupancy, (x, y, point.yaw),
+                            profile['footprint'], profile.get('footprint_padding', 0.)):
+                        continue
+                elif not self._slot_is_free(x, y, clearance):
                     continue
                 taken[slot] = robot.id
                 if slot == 0:
@@ -689,6 +751,9 @@ class FleetManager(Node):
         y = spawn.y + s0 * dx + c0 * dy
         yaw = quaternion_to_yaw(msg.pose.pose.orientation) + spawn.yaw
         self.live_pose[name] = (x, y, yaw)
+        if not hasattr(self, 'live_pose_stamps'):
+            self.live_pose_stamps = {}
+        self.live_pose_stamps[name] = time.monotonic()
         traffic = getattr(self, "traffic", None)
         if traffic is not None:
             traffic.observe(name, self.live_pose[name], self._now())
@@ -748,6 +813,9 @@ class FleetManager(Node):
 
     def _pickup_ready(self, point: Pose2D, ignore_robot: str) -> bool:
         """Keep waiting jobs off an occupied pad and its narrow exit corridor."""
+        robot = self.robots.get(ignore_robot)
+        if robot is not None and self._exit_target_occupied(robot, point):
+            return False
         radius = float(self.get_parameter("zone_dispatch_clearance_m").value)
         for (x, y), claims in getattr(self, "zone_claims", {}).items():
             if any(owner != ignore_robot for owner in claims.values()) and \
@@ -770,6 +838,99 @@ class FleetManager(Node):
             if pose is not None and math.hypot(pose[0]-point.x, pose[1]-point.y) < 1.2:
                 return False
         return True
+
+    def _dispatch_scene(self):
+        now = time.monotonic()
+        stamps = getattr(self, 'live_pose_stamps', {})
+        if any(not 0 <= now-stamps.get(n, -math.inf) <= .5 for n in self.robots):
+            return None
+        return dict(self.live_pose)
+
+    @staticmethod
+    def _same_dispatch_scene(a, b):
+        return (a is not None and b is not None and a.keys() == b.keys()
+                and all(math.dist(a[n][:2], b[n][:2]) < .20
+                        and abs(math.atan2(math.sin(a[n][2]-b[n][2]),
+                                           math.cos(a[n][2]-b[n][2]))) < .25 for n in a))
+
+    def _dispatch_path_ready(self, robot, task):
+        if not self._pickup_ready(task.pickup, robot.id):
+            return False
+        scene = self._dispatch_scene()
+        if scene is None:
+            return None
+        key = (robot.id, task.id)
+        cached = self._dispatch_path_cache.get(key)
+        if (cached is not None and time.monotonic()-cached[0] < 8.
+                and self._same_dispatch_scene(scene, cached[1])):
+            return cached[2]
+        if key not in self._dispatch_probe_busy:
+            self._dispatch_probe_busy.add(key)
+            def probe():
+                ok = False
+                try:
+                    ok = self._probe_target_path(robot, task.pickup, 'TaskGridBased')
+                except Exception as exc:
+                    self.get_logger().warn(f'{robot.id}: dispatch path probe failed: {exc!r}')
+                finally:
+                    self._dispatch_path_cache[key] = (time.monotonic(), scene, ok)
+                    self._dispatch_probe_busy.discard(key)
+            threading.Thread(target=probe, daemon=True).start()
+        return None
+
+    def _g1_dispatch_priority(self):
+        """Wheel admission yields to G1; only physical paths admit G1 jobs."""
+        if not getattr(self, 'wheel_yield_to_g1', False):
+            return None, False
+        g1s = [r for r in self.robots.values() if r.type == 'g1_humanoid']
+        if any(r.current_task_id or r.status == RobotStatus.CHARGING for r in g1s):
+            return set(), True
+        # Finish an already started wheel transport / parking move. G1's next
+        # job stays pending rather than starting a route known to be cut off.
+        if any(r.type != 'g1_humanoid' and (r.current_task_id
+               or r.status == RobotStatus.CHARGING) for r in self.robots.values()):
+            return set(), False
+        allowed, pending_probe = set(), False
+        for robot in g1s:
+            if robot.status != RobotStatus.IDLE:
+                continue
+            for tid in self.pending:
+                task = self.tasks.get(tid)
+                if task is None or not self._can_serve(robot, task):
+                    continue
+                ready = self._dispatch_path_ready(robot, task)
+                if ready:
+                    allowed.add((robot.id, tid))
+                elif ready is None:
+                    pending_probe = True
+            # Before giving wheels another turn, physically clear G1 from its
+            # completed work pad. Its normal docking worker performs the move.
+            park = self.idle_clearance_pose.get(robot.id, self.charger_pose.get(robot.id))
+            if robot.tasks_completed and park is not None and not self._at_charger(robot, park):
+                pending_probe = True
+        return allowed, bool(allowed) or pending_probe
+
+    def _wheel_admission_owner(self, now):
+        order = getattr(self, 'wheel_dispatch_order', [])
+        if not order:
+            return None
+        if self._wheel_batch_started is None:
+            self._wheel_batch_started = now
+        if now - self._wheel_batch_started < self.wheel_batch_collect_sec:
+            return ''
+        def has_work(robot):
+            return bool(robot.current_task_id) or any(
+                tid in self.tasks and self.tasks[tid].state == TaskState.PENDING
+                and self._can_serve(robot, self.tasks[tid]) for tid in self.pending)
+        owner = self.robots.get(self._wheel_batch_robot)
+        if owner is not None:
+            park = self.idle_clearance_pose.get(owner.id, self.charger_pose.get(owner.id))
+            if (has_work(owner) or owner.status != RobotStatus.IDLE or park is None
+                    or not self._at_charger(owner, park)):
+                return owner.id
+        self._wheel_batch_robot = next((name for name in order
+            if name in self.robots and has_work(self.robots[name])), None)
+        return self._wheel_batch_robot
 
     def _try_assign_all(self, count_reschedule: bool = True) -> None:
         """Greedy pass over the pending queue.
@@ -809,6 +970,8 @@ class FleetManager(Node):
                 ),
             )
 
+            admitted_wheel = self._wheel_admission_owner(now)
+            g1_allowed, yield_to_g1 = self._g1_dispatch_priority()
             assignments = []
             dispatch_points = []
             clearance = float(self.get_parameter("zone_dispatch_clearance_m").value)
@@ -820,11 +983,19 @@ class FleetManager(Node):
                 free = [
                     r for r in self.robots.values()
                     if r.status == RobotStatus.IDLE
+                    and (not getattr(self, 'wheel_dispatch_order', [])
+                         or r.type == 'g1_humanoid' or r.id == admitted_wheel)
+                    and (r.type == 'g1_humanoid' or not yield_to_g1)
+                    and (r.type != 'g1_humanoid' or g1_allowed is None
+                         or (r.id, tid) in g1_allowed)
                     and self._locomotion_available(r.id, now)
                     and self._navigation_available(r.id)
+                    and not self._should_clear_channel(r.id)
                 ]
                 if not free:
-                    break
+                    # Admission is task-specific: an earlier wheel job must
+                    # not hide a later eligible G1 job in this queue scan.
+                    continue
 
                 robot, why = select_robot(
                     free, task, now, self.weights, self.min_battery_pct,
@@ -906,7 +1077,9 @@ class FleetManager(Node):
             # --- load ---------------------------------------------------
             task.state = TaskState.LOADING
             robot.status = RobotStatus.LOADING
-            self._dwell(self.load_time)
+            if not self._task_point_dwell(robot, self.load_time):
+                self._fail(robot, task, "pickup service interrupted")
+                return
             robot.current_payload_kg = task.payload_kg
             # Loading done, the robot is about to leave: hand the pickup marker
             # to whoever is waiting for it.
@@ -924,7 +1097,9 @@ class FleetManager(Node):
                 return
 
             # --- unload -------------------------------------------------
-            self._dwell(self.unload_time)
+            if not self._task_point_dwell(robot, self.unload_time):
+                self._fail(robot, task, "dropoff service interrupted")
+                return
             robot.current_payload_kg = 0.0
             self._release_zone(robot, task.dropoff)
 
@@ -1035,6 +1210,24 @@ class FleetManager(Node):
                     return True
         return False
 
+    def _should_clear_idle_g1(self, robot):
+        """Pending but undispatchable work must not park G1 on a work pad."""
+        if (robot.type != 'g1_humanoid' or robot.tasks_completed < 1
+                or robot.id not in getattr(self, 'idle_clearance_pose', {})):
+            return False
+        with self._lock:
+            if not self._on_task_point(robot, self.clear_task_point_radius_m):
+                return False
+            eligible = [self.tasks[tid] for tid in self.pending if tid in self.tasks
+                        and self.tasks[tid].state == TaskState.PENDING
+                        and self._can_serve(robot, self.tasks[tid])]
+            busy = any(r.id != robot.id and r.status not in (RobotStatus.IDLE, RobotStatus.CHARGING)
+                       for r in self.robots.values())
+            pending_work = any(tid in self.tasks and self.tasks[tid].state == TaskState.PENDING
+                               and any(self._can_serve(r, self.tasks[tid]) for r in self.robots.values())
+                               for tid in self.pending)
+            return (busy or pending_work) and not any(self._pickup_ready(t.pickup, robot.id) for t in eligible)
+
     def _start_docking(self, robot: RobotState) -> None:
         """Claim an idle robot for its charger and drive it there off-thread.
 
@@ -1067,6 +1260,13 @@ class FleetManager(Node):
         scheduler will never hand work to again.
         """
         home = self.charger_pose.get(robot.id)
+        clearing_idle = self._should_clear_idle_g1(robot)
+        if (robot.type != 'g1_humanoid' and getattr(self, 'wheel_dispatch_order', [])
+                and robot.id in self.idle_clearance_pose
+                and (robot.tasks_completed > 0 or robot.id in self.startup_clearance_robots)):
+            clearing_idle = True
+        if clearing_idle:
+            home = self.idle_clearance_pose[robot.id]
         ok = True
         drove = False
         dist = 0.0
@@ -1077,18 +1277,35 @@ class FleetManager(Node):
                 # standing on it - re-issuing a centimetre goal is how a robot
                 # spends a whole recovery cycle going nowhere.
                 return
-            if not self.return_to_charger or self._work_for(robot):
+            if not self.return_to_charger or (self._work_for(robot) and
+                    not self._should_clear_channel(robot.id) and not clearing_idle):
                 # Work arrived between the tick that decided to dock and this
                 # thread starting. Stay put and take it.
                 return
             robot.status = RobotStatus.CHARGING
             drove = True
             self.get_logger().info(
-                f"{robot.id}: returning to charger ({home.x:.2f},{home.y:.2f})"
+                f"{robot.id}: {'clearing task point' if clearing_idle else 'returning to charger'} "
+                f"({home.x:.2f},{home.y:.2f})"
             )
             # Approach the charging row from its open side; driving straight
             # down the row can trap a biped behind an already parked AMR.
-            route = getattr(self, "charger_route", {}).get(robot.id, [])
+            route = [] if clearing_idle else getattr(self, "charger_route", {}).get(robot.id, [])
+            if self._should_clear_channel(robot.id):
+                # A charger may be blocked by G1 even while an exit waypoint
+                # is reachable. Leave the resource before attempting docking.
+                if getattr(self, 'planner_clients', {}).get(robot.id) is not None:
+                    cleared, leg_dist, leg_energy = self._drive_to_clearance_exit(robot)
+                    dist += leg_dist
+                    energy += leg_energy
+                    if not cleared:
+                        ok = False
+                        self.get_logger().warn(f'{robot.id}: no reachable clearance exit; retrying when space changes')
+                        return
+                else:
+                    exit_pose = self._channel_maneuver(robot, 'exit_waypoints')
+                    if exit_pose is not None:
+                        route = [exit_pose, *route]
             for index, target in enumerate([*route, home]):
                 ok, leg_dist, leg_energy = self._navigate(
                     robot, target, f"{robot.id}:charge:{index}")
@@ -1110,7 +1327,8 @@ class FleetManager(Node):
             return
         if ok:
             self.get_logger().info(
-                f"{robot.id}: docked at charger, battery {robot.battery_pct:.1f}%"
+                f"{robot.id}: {'parked at idle clearance' if clearing_idle else 'docked at charger'}, "
+                f"battery {robot.battery_pct:.1f}%"
             )
         else:
             # Not fatal: the robot is still IDLE and can be given work from
@@ -1140,6 +1358,20 @@ class FleetManager(Node):
         goal.pose.pose.orientation.w = qw
         return goal
 
+    @staticmethod
+    def _is_task_point(tag):
+        return tag.rsplit(':', 1)[-1] in ('pickup', 'dropoff')
+
+    def _task_arrival_pose(self, robot, target):
+        pose = self.live_pose.get(robot.id)
+        stamps = getattr(self, 'live_pose_stamps', None)
+        if stamps is not None and not 0 <= time.monotonic() - stamps.get(robot.id, -math.inf) <= .5:
+            return None
+        if (pose is not None and all(math.isfinite(v) for v in pose)
+                and math.hypot(pose[0] - target.x, pose[1] - target.y) <= .15):
+            return pose
+        return None
+
     def _locomotion_available(self, robot_id: str, now: float) -> bool:
         """Legged robots must have fresh balance readiness; wheel robots pass."""
         health = getattr(self, "locomotion_health", {})
@@ -1158,12 +1390,36 @@ class FleetManager(Node):
         """Hand one NavigateToPose goal to Nav2.
 
         Returns (handle, None) on success and (None, reason) on any failure -
-        "unavailable", "timeout" or "rejected". The reasons are kept apart
+        "goal_occupied", "unavailable", "timeout" or "rejected". The reasons are kept apart
         because they mean different things to the caller: only "unavailable"
         (no Nav2 at all) justifies the kinematic stand-in, while a rejected or
         timed-out goal has to fail the leg honestly instead of silently
         "delivering" cargo the robot never carried.
         """
+        occupancy = getattr(self, "_occupancy", None)
+        profile = getattr(self, "types", {}).get(robot.type)
+        task_point = self._is_task_point(tag)
+        headings = [target.yaw]
+        if task_point:
+            model = (profile or {}).get('kinematics', 'legged')
+            if model in ('diff', 'mecanum'):
+                if not hasattr(self, '_arrival_heading_cache'):
+                    self._arrival_heading_cache = {}
+                lattice = 'omni' if model == 'mecanum' else 'diff'
+                if lattice not in self._arrival_heading_cache:
+                    filename = os.path.join(get_package_share_directory('hetero_fleet_bringup'),
+                                            'config', 'lattice', f'{lattice}_64.json')
+                    with open(filename) as stream:
+                        self._arrival_heading_cache[lattice] = json.load(stream)['lattice_metadata']['heading_angles']
+                headings = self._arrival_heading_cache[lattice]
+            else:
+                headings = [2 * math.pi * k / 64 for k in range(64)]
+        if occupancy is not None and profile is not None and not any(rectangle_is_free(
+                occupancy, (target.x, target.y, yaw), profile["footprint"],
+                profile.get("footprint_padding", 0.0)) for yaw in headings):
+            self.get_logger().warn(
+                f"{robot.id}: target body intersects the static map for {tag}")
+            return None, "goal_occupied"
         if not self._locomotion_available(robot.id, self._now()):
             return None, "locomotion_unavailable"
         client = self.nav_clients[robot.id]
@@ -1177,8 +1433,15 @@ class FleetManager(Node):
         def on_feedback(message):
             record["remaining"] = float(message.feedback.distance_remaining)
             record["stamp"] = self._now()
-        send_future = client.send_goal_async(
-            self._make_goal(target), feedback_callback=on_feedback)
+        goal = self._make_goal(target)
+        if task_point:
+            tree = 'g1_task_navigation.xml' if robot.type == 'g1_humanoid' else 'task_navigation.xml'
+            goal.behavior_tree = os.path.join(
+                get_package_share_directory('hetero_fleet_bringup'), 'config', tree)
+        elif tag.endswith(':channel_queue_retreat'):
+            goal.behavior_tree = os.path.join(
+                get_package_share_directory('hetero_fleet_bringup'), 'config', 'retreat_navigation.xml')
+        send_future = client.send_goal_async(goal, feedback_callback=on_feedback)
         deadline = time.time() + 30.0
         while not send_future.done() and time.time() < deadline:
             time.sleep(0.05)
@@ -1203,7 +1466,7 @@ class FleetManager(Node):
             self.get_logger().warn(f"navigation cancellation failed: {exc}")
 
     def _wait_for_result(self, robot: RobotState, target: Pose2D, result_future,
-                         allow_traffic=True, cancel_when=None):
+                         allow_traffic=True, cancel_when=None, position_only=False):
         """Block until the goal finishes, or until the robot stops converging.
 
         Returns (goal_status, stalled, distance_to_goal). This is the deadlock
@@ -1226,8 +1489,8 @@ class FleetManager(Node):
         best_path = None
         last_distance = float("inf")
         if anchor is not None:
-            best = self._goal_error(anchor, target)
             last_distance = math.hypot(anchor[0] - target.x, anchor[1] - target.y)
+            best = last_distance if position_only else self._goal_error(anchor, target)
         started = last_progress = self._now()
         # Bound a leg even if a moving robot keeps wandering. This is simulation
         # time, so a slow / paused Gazebo does not consume the navigation budget.
@@ -1240,6 +1503,12 @@ class FleetManager(Node):
             time.sleep(0.1)
             if cancel_when is not None and cancel_when():
                 return "traffic_timeout", False, last_distance
+            if position_only and self._task_arrival_pose(robot, target) is not None:
+                return 'task_arrived', False, 0.
+            if self._channel_blocked(robot.id):
+                # The command gate already stopped the vehicle. Cancel before
+                # Nav2's progress checker initiates recovery motions in a queue.
+                return "channel_wait", False, last_distance
             if not self.stall_enabled:
                 continue
             xy = self._live_xy(robot.id)
@@ -1274,7 +1543,7 @@ class FleetManager(Node):
                 best_path = None
             distance = math.hypot(xy[0] - target.x, xy[1] - target.y)
             last_distance = distance
-            error = self._goal_error(xy, target)
+            error = distance if position_only else self._goal_error(xy, target)
             feedback = getattr(self, "_nav_feedback", {}).get(robot.id, {})
             remaining = feedback.get("remaining")
             fresh = now - feedback.get("stamp", -float("inf")) < 2.0
@@ -1306,7 +1575,28 @@ class FleetManager(Node):
 
         result = result_future.result()
         status = result.status if result is not None else None
+        if not hasattr(self, '_nav_result_errors'):
+            self._nav_result_errors = {}
+        self._nav_result_errors[robot.id] = getattr(getattr(result, 'result', None), 'error_code', 0)
         return status, False, last_distance
+
+    def _has_nearby_route_peer(self, robot, target):
+        """A fresh physical peer can temporarily disconnect an otherwise free pose."""
+        pose = self.live_pose.get(robot.id)
+        profile = getattr(self, 'types', {}).get(robot.type)
+        occupancy = getattr(self, '_occupancy', None)
+        if (pose is None or profile is None or occupancy is None or
+                not rectangle_is_free(occupancy, pose, profile['footprint'],
+                                      profile.get('footprint_padding', 0.))):
+            return False
+        stamps = getattr(self, 'live_pose_stamps', {})
+        now = time.monotonic()
+        if not 0 <= now - stamps.get(robot.id, -math.inf) <= .5:
+            return False
+        return any(name != robot.id and 0 <= now - stamps.get(name, -math.inf) <= .5
+                   and (math.dist(p[:2], pose[:2]) <= 3. or
+                        math.dist(p[:2], (target.x, target.y)) <= 2.)
+                   for name, p in self.live_pose.items())
 
     def _goal_error(self, xy, target: Pose2D) -> float:
         """Position error plus a weighted heading error, in metres."""
@@ -1550,11 +1840,393 @@ class FleetManager(Node):
         )
         return moved
 
+    def _on_channel_wait(self, name, message):
+        self._channel_wait_states[name] = message.data, time.monotonic()
+
+    def _on_channel_snapshot(self, message):
+        try:
+            self._channel_snapshot = (json.loads(message.data), time.monotonic())
+        except (ValueError, TypeError):
+            self.get_logger().warn('Ignoring invalid channel status')
+
+    def _should_clear_channel(self, name):
+        """Yield an occupied bottleneck between jobs when another robot queues.
+
+        Physically navigate out before releasing the token. Taking a new job
+        inside the same group used to let one robot monopolize it indefinitely.
+        """
+        robot = self.robots.get(name)
+        if robot is None or robot.type == 'g1_humanoid' or not getattr(self, 'return_to_charger', True):
+            return False
+        snapshot, stamp = getattr(self, '_channel_snapshot', ({}, -math.inf))
+        if not 0 <= time.monotonic() - stamp <= 1.5:
+            return False
+        return any(group.get('owner') == name and group.get('entered') and
+                   (any(peer != name for peer in group.get('queue', [])) or
+                    name in getattr(self, '_channel_yield_waits', {}).copy().values())
+                   for group in snapshot.get('groups', {}).values())
+
+    def _channel_blocked(self, name):
+        robot = getattr(self, 'robots', {}).get(name)
+        if robot is not None and robot.type == 'g1_humanoid':
+            return False
+        if name in getattr(self, '_channel_retreating', set()):
+            # A replacement route OUT of the queue must get a chance to reach
+            # the arbiter. Its command gate still validates every command.
+            return False
+        return getattr(self, '_channel_wait_states', {}).get(name, (False, 0))[0]
+
+    def _channel_exit_owner(self, name):
+        """Queued wheels clear approaches for every current owner.
+
+        An active task can leave the resource to reach a forecourt pickup;
+        limiting this handshake to charging owners deadlocks that pickup
+        behind a queued vehicle. Full-body checks still select the refuge.
+        """
+        snapshot, stamp = getattr(self, '_channel_snapshot', ({}, -math.inf))
+        if not 0 <= time.monotonic() - stamp <= 1.5:
+            return None
+        for group in snapshot.get('groups', {}).values():
+            owner = group.get('owner')
+            peer = self.robots.get(owner)
+            if (owner != name and name in group.get('queue', [])
+                    and peer is not None and peer.type != 'g1_humanoid'):
+                return owner
+        return None
+
+    def _channel_owner_holds_turn(self, owner):
+        snapshot, stamp = getattr(self, '_channel_snapshot', ({}, -math.inf))
+        if not 0 <= time.monotonic() - stamp <= 1.5:
+            return True  # An unknown physical exit cannot release the waiter.
+        return any(g.get('owner') == owner
+                   for g in snapshot.get('groups', {}).values())
+
+    def _retreat_from_channel_queue(self, robot, owner, cancel_when):
+        snapshot = getattr(self, '_channel_snapshot', ({}, 0))[0]
+        configured = bool(snapshot.get('maneuvers', {}).get('retreat_waypoints'))
+        home = (self._channel_maneuver(robot, 'retreat_waypoints') if configured
+                else self.charger_pose.get(robot.id))
+        if home is None or (not configured and self._at_charger(robot, home)):
+            return 0.
+        if not hasattr(self, '_channel_retreating'):
+            self._channel_retreating = set()
+        self._channel_retreating.add(robot.id)
+        deadline = self._now() + 120.
+        self.get_logger().info(f'{robot.id}: clearing entrance for {owner}; retreating to ({home.x:.2f},{home.y:.2f})')
+        try:
+            _, distance, _ = self._navigate(
+                robot, home, f'{robot.id}:channel_queue_retreat', allow_traffic=False,
+                cancel_when=lambda: self._now() > deadline or
+                (cancel_when is not None and cancel_when()))
+            return distance
+        finally:
+            self._channel_retreating.discard(robot.id)
+
+    def _exit_target_occupied(self, robot, target):
+        profile = getattr(self, 'types', {}).get(robot.type)
+        if profile is None:
+            return False
+        own_size = [v + 2*profile.get('footprint_padding', 0.) for v in profile['footprint']]
+        now = time.monotonic()
+        stamps = getattr(self, 'live_pose_stamps', {})
+        for name, peer in self.robots.items():
+            if name == robot.id or not 0 <= now-stamps.get(name, -math.inf) <= .5:
+                continue
+            pose = self.live_pose.get(name)
+            peer_profile = self.types.get(peer.type)
+            if pose is not None and peer_profile is not None and rectangles_overlap(
+                    (target.x, target.y, target.yaw), own_size, pose,
+                    [v + .24 for v in peer_profile['footprint']], margin=.025):
+                return True
+        return False
+
+    def _drive_to_clearance_exit(self, robot):
+        excluded, distance, energy = [], 0., 0.
+        while True:
+            target = self._reachable_channel_exit(robot, excluded=excluded)
+            if target is None:
+                return False, distance, energy
+            excluded.append(target)
+            occupied_since = [None]
+            def blocked():
+                now = self._now()
+                if not self._exit_target_occupied(robot, target):
+                    occupied_since[0] = None
+                    return False
+                if occupied_since[0] is None or now < occupied_since[0]:
+                    occupied_since[0] = now
+                return now - occupied_since[0] >= 2.
+            ok, moved, used = self._navigate(
+                robot, target, f'{robot.id}:charge:exit:{len(excluded)}', cancel_when=blocked)
+            distance += moved
+            energy += used
+            if ok:
+                return True, distance, energy
+            self.get_logger().info(f'{robot.id}: clearance exit changed; selecting another route')
+
+    def _reachable_channel_exit(self, robot, excluded=()):
+        """Verify candidates with the actual Nav2 body planner before choosing."""
+        client = getattr(self, 'planner_clients', {}).get(robot.id)
+        if client is None:
+            return self._channel_maneuver(robot, 'exit_waypoints')
+        if not client.wait_for_server(timeout_sec=1.):
+            return None
+        excluded = list(excluded)
+        while True:
+            target = self._channel_maneuver(robot, 'exit_waypoints', excluded=excluded)
+            if target is None:
+                return None
+            excluded.append(target)
+            if self._probe_target_path(robot, target):
+                return target
+            self.get_logger().info(
+                f'{robot.id}: exit ({target.x:.2f},{target.y:.2f}) has no route; trying another exit')
+
+    def _probe_target_path(self, robot, target, planner_id='GridBased'):
+        client = getattr(self, 'planner_clients', {}).get(robot.id)
+        if client is None or not client.wait_for_server(timeout_sec=1.):
+            return False
+        goal = ComputePathToPose.Goal()
+        goal.goal = self._make_goal(target).pose
+        goal.planner_id = planner_id
+        goal.use_start = False
+        sent = client.send_goal_async(goal)
+        deadline = time.monotonic() + 15.
+        while not sent.done() and rclpy.ok() and time.monotonic() < deadline:
+            time.sleep(.05)
+        if not sent.done():
+            sent.add_done_callback(lambda f: f.result().cancel_goal_async()
+                                   if f.result() and f.result().accepted else None)
+            return False
+        handle = sent.result()
+        if handle is None or not handle.accepted:
+            return False
+        future = handle.get_result_async()
+        while not future.done() and rclpy.ok() and time.monotonic() < deadline:
+            time.sleep(.05)
+        if not future.done():
+            handle.cancel_goal_async()
+            return False
+        result = future.result()
+        poses = result.result.path.poses if result is not None else []
+        if result is None or result.status != 4 or not poses:
+            return False
+        end = poses[-1].pose.position
+        return (math.hypot(end.x-target.x, end.y-target.y) <= .15
+                and self._path_clears_peers(robot, poses))
+
+    def _path_clears_peers(self, robot, poses):
+        types = getattr(self, 'types', {})
+        if robot.type not in types:
+            return False
+        scene = self._dispatch_scene()
+        if scene is None:
+            return False
+        profile = types[robot.type]
+        own_size = [v+2*profile.get('footprint_padding', 0.) for v in profile['footprint']]
+        previous = None
+        radius = math.hypot(*own_size)/2
+        for stamped in poses:
+            p = stamped.pose
+            q = p.orientation
+            yaw = math.atan2(2*(q.w*q.z+q.x*q.y), 1-2*(q.y*q.y+q.z*q.z))
+            current = (p.position.x,p.position.y,yaw)
+            start = previous or current
+            turn = math.atan2(math.sin(yaw-start[2]),math.cos(yaw-start[2]))
+            steps = max(1, math.ceil((math.dist(start[:2],current[:2])+radius*abs(turn))/.025))
+            for index in range(steps+1):
+                t = index/steps
+                sample = (start[0]+t*(current[0]-start[0]),
+                          start[1]+t*(current[1]-start[1]),start[2]+t*turn)
+                for name, peer in self.robots.items():
+                    if name == robot.id:
+                        continue
+                    if peer.type not in types or name not in scene:
+                        return False
+                    if rectangles_overlap(sample, own_size, scene[name],
+                            [v+.24 for v in types[peer.type]['footprint']], .025):
+                        return False
+            previous = current
+        return True
+
+    def _channel_maneuver(self, robot, kind, excluded=()):
+        """Choose a real Nav2 waypoint outside the complete shared resource.
+
+        Retreats also require a free approach-side segment and increased
+        entrance distance. This is a destination filter; Nav2 and the command
+        arbiter still check the actual kinematic route and all live obstacles.
+        """
+        snapshot, stamp = getattr(self, '_channel_snapshot', ({}, -math.inf))
+        occupancy = getattr(self, '_occupancy', None)
+        types = getattr(self, 'types', {})
+        pose = self._live_xy(robot.id)
+        if (not 0 <= time.monotonic() - stamp <= 1.5 or occupancy is None
+                or robot.type not in types or pose is None):
+            return None
+        bounds = [c['bounds'] for c in snapshot.get('channels', [])]
+        if not bounds:
+            return None
+        profile = types[robot.type]
+        size = profile['footprint']
+        padding = profile.get('footprint_padding', 0.)
+        margin = snapshot.get('clearance_margin', .15)
+        queued = {n for g in snapshot.get('groups', {}).values()
+                  if g.get('owner') == robot.id and g.get('entered')
+                  for n in g.get('queue', [])}
+        queued.update(name for name, owner in getattr(self, '_channel_yield_waits', {}).copy().items()
+                      if owner == robot.id)
+        retreats = {}
+        if kind == 'exit_waypoints':
+            for name in queued:
+                peer = self.robots.get(name)
+                if peer is not None and peer.type != 'g1_humanoid':
+                    target = self._channel_maneuver(peer, 'retreat_waypoints')
+                    if target is not None:
+                        retreats[name] = (target.x, target.y, target.yaw)
+
+        def distance_to(p, b):
+            return math.hypot(max(b[0]-p[0], p[0]-b[2], 0.),
+                              max(b[1]-p[1], p[1]-b[3], 0.))
+        entrance = min(bounds, key=lambda b: distance_to(pose, b))
+
+        def free(p):
+            if (any(intersects(p, size, padding + margin, b) for b in bounds)
+                    or not rectangle_is_free(occupancy, p, size, padding)):
+                return False
+            for name, peer in self.robots.items():
+                if name == robot.id:
+                    continue
+                # Account for where a queued peer will actually retreat. The
+                # nearest exit can itself be blocked by that destination.
+                q = retreats.get(name, self._live_xy(name))
+                if q is None or peer.type not in types:
+                    return False
+                stamps = getattr(self, 'live_pose_stamps', None)
+                if stamps is not None and not 0 <= time.monotonic() - stamps.get(name, -math.inf) <= .5:
+                    return False
+                if rectangles_overlap(p, [v + 2*padding for v in size],
+                                      q, types[peer.type]['footprint'], .24):
+                    return False
+            return True
+
+        candidates = sorted(snapshot.get('maneuvers', {}).get(kind, []),
+                            key=lambda p: math.dist(p[:2], pose[:2]))
+        if kind == 'retreat_waypoints':
+            if free(pose) and any(math.dist(p[:2], pose[:2]) <= .35 for p in candidates):
+                return Pose2D(*pose)
+            # A short retreat clears space without imposing a new parking yaw.
+            candidates = [(p[0], p[1], pose[2]) for p in candidates]
+        for point in candidates:
+            if any(math.hypot(point[0]-p.x, point[1]-p.y) < .05 for p in excluded):
+                continue
+            if not free(point):
+                continue
+            if kind == 'retreat_waypoints':
+                # Moving away from this entrance may bring a body nearer a
+                # different entrance. All-channel exclusion is checked above;
+                # minimizing distance over every entrance rejected safe short
+                # retreats and sent vehicles across the owner's return route.
+                if distance_to(point, entrance) < distance_to(pose, entrance) + .3:
+                    continue
+                turn = math.atan2(math.sin(point[2]-pose[2]), math.cos(point[2]-pose[2]))
+                steps = max(1, math.ceil((math.dist(point[:2], pose[:2]) + abs(turn)) / .025))
+                if not all(free((pose[0]+(point[0]-pose[0])*i/steps,
+                                 pose[1]+(point[1]-pose[1])*i/steps, pose[2]+turn*i/steps))
+                           for i in range(steps+1)):
+                    continue
+                direction = math.atan2(point[1]-pose[1], point[0]-pose[0])
+                alignment = math.cos(direction-pose[2])
+                if abs(alignment) < .9:
+                    # A lateral displacement cannot end at the original yaw
+                    # in every pocket. Choose the nearer forward/reverse
+                    # travel heading; aligned short reverses keep their yaw.
+                    yaw = direction if alignment >= 0 else direction + math.pi
+                    yaw = math.atan2(math.sin(yaw), math.cos(yaw))
+                    point = (point[0], point[1], yaw)
+                    if not free(point):
+                        continue
+            return Pose2D(*point)
+        return None
+
+    def _publish_channel_intents(self):
+        with self._channel_lock:
+            for name, publisher in self._channel_intent_publishers.items():
+                publisher.publish(Bool(data=self._channel_counts.get(name, 0) > 0))
+            for name, publisher in getattr(self, '_channel_transport_publishers', {}).items():
+                robot = self.robots[name]
+                carrying_out_task = bool(robot.current_task_id) and robot.type != 'g1_humanoid' and robot.status in (
+                    RobotStatus.TO_PICKUP, RobotStatus.LOADING, RobotStatus.TO_DROPOFF)
+                publisher.publish(Bool(data=carrying_out_task))
+
+    def _set_channel_active(self, name, active):
+        if not getattr(self, '_channel_intent_publishers', {}):
+            return  # Non-ROS scheduler fixtures and legacy direct use.
+        with self._channel_lock:
+            self._channel_counts[name] = max(0, self._channel_counts.get(name, 0) + (1 if active else -1))
+            self._channel_intent_publishers[name].publish(Bool(data=self._channel_counts[name] > 0))
+
+    def _wait_channel_turn(self, robot, cancel_when):
+        started = self._now()
+        attempted = set()
+        retreat_attempted_at = {}
+        yielding_owner = None
+        retreat_distance = 0.
+        if not hasattr(self, '_channel_yield_waits'):
+            self._channel_yield_waits = {}
+        try:
+            while rclpy.ok():
+                if cancel_when is not None and cancel_when():
+                    return False, retreat_distance
+                if not self._locomotion_available(robot.id, self._now()):
+                    return False, retreat_distance
+                owner = self._channel_exit_owner(robot.id)
+                now = self._now()
+                if (owner is not None and owner not in attempted and
+                        (now < retreat_attempted_at.get(owner, -math.inf) or
+                         now - retreat_attempted_at.get(owner, -math.inf) >= 10.)):
+                    self._channel_yield_waits[robot.id] = owner
+                    retreat_attempted_at[owner] = now
+                    yielding_owner = owner
+                    retreat_distance += self._retreat_from_channel_queue(robot, owner, cancel_when)
+                    snapshot = getattr(self, '_channel_snapshot', ({}, 0))[0]
+                    configured = bool(snapshot.get('maneuvers', {}).get('retreat_waypoints'))
+                    refuge = (self._channel_maneuver(robot, 'retreat_waypoints') if configured
+                              else self.charger_pose.get(robot.id))
+                    pose = self._live_xy(robot.id)
+                    if refuge is not None and pose is not None and math.hypot(
+                            pose[0] - refuge.x, pose[1] - refuge.y) <= .35:
+                        attempted.add(owner)
+                held, stamp = self._channel_wait_states.get(robot.id, (True, -float('inf')))
+                if (not held and 0 <= time.monotonic() - stamp <= .5 and
+                        (yielding_owner is None or not self._channel_owner_holds_turn(yielding_owner))):
+                    return True, retreat_distance
+                now = self._now()
+                if now < started:
+                    started = now
+                if now - started > self.channel_wait_timeout:
+                    self.get_logger().warn(f"{robot.id}: corridor reservation wait timed out")
+                    return False, retreat_distance
+                time.sleep(.05)
+            return False, retreat_distance
+        finally:
+            self._channel_yield_waits.pop(robot.id, None)
+
     def _navigate(self, robot: RobotState, target: Pose2D, tag: str,
                   allow_traffic=True, cancel_when=None):
+        self._set_channel_active(robot.id, True)
         try:
-            return self._navigate_impl(robot, target, tag, allow_traffic, cancel_when)
+            result = self._navigate_impl(robot, target, tag, allow_traffic, cancel_when)
+            if result[0] and robot.type == 'g1_humanoid' and not self._is_task_point(tag):
+                # A new path starts from the actual settled biped pose, rather
+                # than inheriting the previous leg's walking/turning transient.
+                if not self._task_point_dwell(robot, 3.):
+                    return False, result[1], result[2]
+                pose = self._live_xy(robot.id)
+                if pose is not None:
+                    robot.pose = Pose2D(*pose)
+            return result
         finally:
+            self._set_channel_active(robot.id, False)
             request = getattr(getattr(self, 'traffic', None), 'encounter', None)
             if request is not None and request.winner == robot.id:
                 request.winner_finished.set()
@@ -1572,12 +2244,14 @@ class FleetManager(Node):
         back to the scheduler - the failure path that was already there.
         """
         start = Pose2D(robot.pose.x, robot.pose.y, robot.pose.yaw)
+        position_only = self._is_task_point(tag)
         straight = start.distance_to(target)
         # Distance the recoveries themselves add; folded into the leg's report
         # so the fleet energy/distance totals stay honest.
         extra_dist = 0.0
         recoveries = 0
         traffic_retries = 0
+        peer_wait_started = None
         if not hasattr(self, '_nav_targets'):
             self._nav_targets = {}
 
@@ -1616,16 +2290,38 @@ class FleetManager(Node):
                 request = getattr(getattr(self, "traffic", None), "encounter", None)
                 if request is not None and request.winner == robot.id and request.parked.is_set():
                     request.resumed.set()
+            getattr(self, '_nav_result_errors', {}).pop(robot.id, None)
             status, stalled, distance = self._wait_for_result(
                 robot, target, handle.get_result_async(),
                 allow_traffic=allow_traffic and traffic_retries < 2,
                 cancel_when=cancel_when,
+                position_only=position_only,
             )
+            planner_error = getattr(self, '_nav_result_errors', {}).pop(robot.id, 0)
             with self._lock:
                 self.active_goal.pop(robot.id, None)
             request = getattr(getattr(self, "traffic", None), "encounter", None)
             if request is not None and request.winner == robot.id and not isinstance(status, Encounter):
                 request.held.set()
+
+            if status == "channel_wait":
+                self._cancel_navigation(handle)
+                self.get_logger().info(f"{robot.id}: waiting for corridor reservation")
+                cleared, retreat_distance = self._wait_channel_turn(robot, cancel_when)
+                extra_dist += retreat_distance
+                if not cleared:
+                    return False, extra_dist, robot.energy_for(extra_dist, robot.current_payload_kg)
+                # Waiting is not a stall/recovery and consumes no recovery retry.
+                continue
+
+            if status == 'task_arrived':
+                self._cancel_navigation(handle)
+                pose = self._task_arrival_pose(robot, target)
+                if pose is None:
+                    return False, extra_dist, robot.energy_for(extra_dist, robot.current_payload_kg)
+                robot.pose = Pose2D(*pose)
+                driven = straight + extra_dist
+                return True, driven, robot.energy_for(driven, robot.current_payload_kg)
 
             if status == "traffic_timeout":
                 self._cancel_navigation(handle)
@@ -1646,7 +2342,29 @@ class FleetManager(Node):
                     extra_dist += self._yield_to_peer(robot, status)
                 continue
 
-            if stalled and distance <= self.stall_arrive_radius_m:
+            # Occupied targets, search timeouts and disconnected paths can be
+            # temporary while a nearby vehicle traverses the only passage.
+            # Keep the real goal pending instead of reversing into the wall.
+            # This wait has a finite ROS-time budget and never accepts arrival.
+            if (status == 6 and planner_error in (205, 206, 207, 208)
+                    and self._has_nearby_route_peer(robot, target)):
+                now = self._now()
+                if peer_wait_started is None or now < peer_wait_started:
+                    peer_wait_started = now
+                    self.get_logger().info(
+                        f'{robot.id}: waiting for physical route clearance on {tag} '
+                        f'(Nav2 {planner_error}, at most 180 ROS seconds)')
+                if now - peer_wait_started < 180.:
+                    self._cancel_navigation(handle)
+                    if not self._dwell(5.):
+                        return False, extra_dist, robot.energy_for(extra_dist, robot.current_payload_kg)
+                    continue
+
+            # Apply the existing general-goal arrival policy to Nav2 aborts
+            # before deciding to reverse. Task points retain their 15 cm check.
+            if status == 6 and self._locomotion_available(robot.id, self._now()):
+                stalled = True
+            if stalled and distance <= self.stall_arrive_radius_m and not position_only:
                 # The robot is standing on the goal; what it has not got is a
                 # navigation stack willing to say so. Reversing here would make
                 # it drive away from a pad it is already parked on, so cancel
@@ -1720,7 +2438,13 @@ class FleetManager(Node):
             # supplies the real pose on the next idle tick either way.
             if not ok:
                 return False, 0.0, 0.0
-            robot.pose = Pose2D(target.x, target.y, target.yaw)
+            if position_only:
+                pose = self._task_arrival_pose(robot, target)
+                if pose is None:
+                    return False, 0.0, 0.0
+                robot.pose = Pose2D(*pose)
+            else:
+                robot.pose = Pose2D(target.x, target.y, target.yaw)
             driven = straight + extra_dist
             return True, driven, robot.energy_for(driven, robot.current_payload_kg)
 
@@ -1793,19 +2517,31 @@ class FleetManager(Node):
         # Take whichever estimate says the pack is emptier, but never below 0.
         robot.battery_pct = max(0.0, 100.0 - max(pct_from_energy, 100.0 - pct_from_distance))
 
-    def _dwell(self, seconds: float) -> None:
+    def _task_point_dwell(self, robot, seconds):
+        publisher = getattr(self, '_task_hold_publishers', {}).get(robot.id)
+        if publisher is not None:
+            publisher.publish(Bool(data=True))
+        try:
+            return self._dwell(seconds)
+        finally:
+            if publisher is not None:
+                publisher.publish(Bool(data=False))
+
+    def _dwell(self, seconds: float) -> bool:
         """Sleep for a simulated dwell period (loading / unloading).
 
         Sleeping in small steps rather than one long call keeps the node
         responsive to Ctrl-C during a long load.
         """
         if seconds <= 0:
-            return
-        remaining = seconds
-        step = 0.2
+            return True
+        remaining, previous = seconds, self._now()
         while remaining > 0 and rclpy.ok():
-            time.sleep(min(step, remaining))
-            remaining -= step
+            time.sleep(.05)
+            now = self._now()
+            remaining = seconds if now < previous else remaining - (now - previous)
+            previous = now
+        return remaining <= 0
 
     # ---------------------------------------------------------------- housekeeping
 
@@ -1868,14 +2604,27 @@ class FleetManager(Node):
                 continue
             if not self._locomotion_available(name, now):
                 continue
+            standby = getattr(self, 'idle_clearance_pose', {}).get(name)
+            if (standby is not None
+                    and self._at_charger(r, standby)
+                    and (self._work_remains() or getattr(self, 'wheel_dispatch_order', []))):
+                continue
             threshold = self.dock_when_idle_sec
+            clearing = self._should_clear_channel(name)
+            clearing_idle = self._should_clear_idle_g1(r)
+            if clearing:
+                threshold = min(threshold, .5)
             if self._on_task_point(r, self.clear_task_point_radius_m):
                 threshold = min(threshold, self.clear_task_point_sec)
             if now - started < threshold:
                 continue
-            if not self.return_to_charger or self._work_for(r):
+            if not self.return_to_charger or (self._work_for(r) and not clearing and not clearing_idle):
                 continue
             home = self.charger_pose.get(name)
+            if (r.type != 'g1_humanoid' and getattr(self, 'wheel_dispatch_order', [])
+                    and standby is not None
+                    and (r.tasks_completed > 0 or name in self.startup_clearance_robots)):
+                home = standby
             if home is None or self._at_charger(r, home):
                 continue
             self._start_docking(r)

@@ -11,6 +11,8 @@ Only odom, base_footprint and the costmaps are per-robot.
 """
 
 import os
+import json
+import math
 
 import yaml
 from ament_index_python.packages import get_package_share_directory, get_package_prefix, PackageNotFoundError
@@ -46,6 +48,13 @@ NAV2_PARAM_FILE = {
 }
 
 
+class ParameterDumper(yaml.SafeDumper):
+    def ignore_aliases(self, data):
+        # ROS 2's C parameter parser rejects aliases. Source YAML may share
+        # controller/planner defaults, but deployed files must expand them.
+        return True
+
+
 def render_params(src_path, robot_name, dst_dir, kind):
     """Write a per-robot Nav2 params file keyed by the robot's namespace.
 
@@ -67,6 +76,7 @@ def render_params(src_path, robot_name, dst_dir, kind):
     text = text.replace("<robot_name>", robot_name)
     text = text.replace("<bringup_share>", get_package_share_directory("hetero_fleet_bringup"))
     body = yaml.safe_load(text)
+    validate_lattice_params(body)
 
     # Re-key every top-level section as /<robot_name>/<section>.
     namespaced = {f"/{robot_name}/{section}": params for section, params in body.items()}
@@ -74,8 +84,40 @@ def render_params(src_path, robot_name, dst_dir, kind):
     os.makedirs(dst_dir, exist_ok=True)
     dst = os.path.join(dst_dir, f"{robot_name}_{kind}.yaml")
     with open(dst, "w") as f:
-        yaml.safe_dump(namespaced, f, default_flow_style=False, sort_keys=False)
+        yaml.dump(namespaced, f, Dumper=ParameterDumper,
+                  default_flow_style=False, sort_keys=False)
     return dst
+
+
+def validate_lattice_params(body):
+    """Fail before starting servers when control sets or body checks disagree."""
+    planners = body["planner_server"]["ros__parameters"]
+    for name in planners["planner_plugins"]:
+        controller = "TaskFollowPath" if name in ("TaskGridBased", "RetreatGridBased") else "FollowPath"
+        _validate_lattice_planner(body, planners[name], controller)
+
+
+def _validate_lattice_planner(body, planner, controller_name):
+    if planner["plugin"] != "hetero_fleet_navigation::SweptLattice":
+        return  # Other planner plugins manage their own configuration.
+    with open(planner["lattice_filepath"]) as stream:
+        metadata = json.load(stream)["lattice_metadata"]
+    costmap = body["global_costmap"]["global_costmap"]["ros__parameters"]
+    local = body["local_costmap"]["local_costmap"]["ros__parameters"]
+    controller = body["controller_server"]["ros__parameters"][controller_name]
+    expected = "omni" if controller["motion_model"] == "Omni" else "diff"
+    if metadata["motion_model"] != expected:
+        raise ValueError("State Lattice control set does not match the controller motion model")
+    if not math.isclose(metadata["grid_resolution"], costmap["resolution"], abs_tol=1e-9):
+        raise ValueError("State Lattice resolution does not match the global costmap")
+    if (yaml.safe_load(costmap["footprint"]) != yaml.safe_load(local["footprint"]) or
+            costmap["footprint_padding"] != local["footprint_padding"]):
+        raise ValueError("State Lattice global/local footprints disagree")
+    if (yaml.safe_load(planner["swept_footprint"]) != yaml.safe_load(local["footprint"]) or
+            planner["swept_footprint_padding"] != local["footprint_padding"]):
+        raise ValueError("State Lattice swept body does not match the local physical footprint")
+    if planner["allow_reverse_expansion"] != (expected == "diff"):
+        raise ValueError("Diff lattices need reverse expansion; omni lattices contain reverse moves")
 
 
 def workspace_dir(package: str) -> str:
@@ -100,8 +142,9 @@ def navigation_library_dir():
         prefix = os.path.join(os.path.dirname(get_package_prefix("hetero_fleet_bringup")),
                               "hetero_fleet_navigation")
     directory = os.path.join(prefix, "lib")
-    if not os.path.isfile(os.path.join(directory, "libhetero_stable_route_bt.so")):
-        raise RuntimeError("Build hetero_fleet_navigation before starting Nav2")
+    for library in ["libhetero_stable_route_bt.so", "libhetero_swept_lattice.so", "libhetero_snapshot_obstacle_layer.so"]:
+        if not os.path.isfile(os.path.join(directory, library)):
+            raise RuntimeError("Build hetero_fleet_navigation before starting Nav2: missing " + library)
     return directory
 
 
@@ -118,7 +161,12 @@ def launch_setup(context, *args, **kwargs):
         profiles = yaml.safe_load(f)
 
     types = profiles["robot_types"]
-    actions = []
+    actions = [Node(
+        package="hetero_fleet_scheduler", executable="channel_reservations",
+        name="channel_reservations", output="screen",
+        parameters=[{"use_sim_time": use_sim_time,
+                     "enabled": LaunchConfiguration("reserve_channels"),
+                     "channels_file": LaunchConfiguration("channels_file")}])]
     delay = 0.0
     navigator_env = {"LD_LIBRARY_PATH": navigation_library_dir() + os.pathsep +
                      os.environ.get("LD_LIBRARY_PATH", "")}
@@ -305,9 +353,15 @@ def launch_setup(context, *args, **kwargs):
         #
         # The fix is Nav2's own convention: the raw command goes onto
         # `cmd_vel_nav`, the smoother owns `cmd_vel_smoothed`, and the
-        # collision monitor owns `cmd_vel` - the last topic before the wheels.
+        # channel arbiter filters cmd_vel_smoothed -> cmd_vel_channel, its
+        # local watchdog writes cmd_vel_reserved, then collision_monitor owns
+        # cmd_vel, the last topic before the wheels.
         # Jazzy's velocity_smoother has no input/output topic parameters, so
         # the split is done with remappings on the three nodes.
+        actions.append(TimerAction(period=delay + 2.0, actions=[Node(
+            package="hetero_fleet_bringup", executable="channel_gate.py",
+            name="channel_gate", namespace=name, output="screen",
+            parameters=[{"use_sim_time": use_sim_time, "robot_name": name}])]))
         raw_cmd = [("cmd_vel", "cmd_vel_nav")]
         servers = [
             ("nav2_controller", "controller_server", "controller_server",
@@ -321,7 +375,7 @@ def launch_setup(context, *args, **kwargs):
             ("nav2_velocity_smoother", "velocity_smoother",
              "velocity_smoother", raw_cmd),
             # Activated after velocity_smoother: it consumes that node's
-            # output (cmd_vel_smoothed) and republishes on cmd_vel.
+            # filtered output (cmd_vel_reserved) and republishes on cmd_vel.
             ("nav2_collision_monitor", "collision_monitor",
              "collision_monitor", []),
         ]
@@ -437,12 +491,17 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     bringup_share = get_package_share_directory("hetero_fleet_bringup")
+    scheduler_share = get_package_share_directory("hetero_fleet_scheduler")
     default_map = os.path.join(bringup_share, "maps", "geomap.yaml")
 
     # See bridge.launch.py: the DDS default (shared memory + UDPv4) is what
     # keeps this many nodes on one host talking; forcing UDPv4 makes the
     # lifecycle bringup time out. Override only via HETERO_FLEET_DDS_TRANSPORTS.
-    actions = []
+    actions = [
+        DeclareLaunchArgument("reserve_channels", default_value="true",
+                              description="Enable exclusive corridor reservations"),
+        DeclareLaunchArgument("channels_file", default_value=os.path.join(scheduler_share, "config", "channels.yaml")),
+    ]
     transports = os.environ.get("HETERO_FLEET_DDS_TRANSPORTS", "")
     if transports:
         actions.append(SetEnvironmentVariable("FASTDDS_BUILTIN_TRANSPORTS", transports))

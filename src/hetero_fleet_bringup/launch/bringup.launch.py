@@ -95,6 +95,8 @@ def generate_launch_description():
         launch_arguments={
             "map": map_yaml,
             "use_sim_time": use_sim_time,
+            "reserve_channels": LaunchConfiguration("reserve_channels"),
+            "channels_file": LaunchConfiguration("channels_file"),
         }.items(),
     )
 
@@ -123,6 +125,9 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("headless", default_value="false"),
+            DeclareLaunchArgument("reserve_channels", default_value="true"),
+            DeclareLaunchArgument("channels_file", default_value=os.path.join(
+                get_package_share_directory("hetero_fleet_scheduler"), "config", "channels.yaml")),
             DeclareLaunchArgument("rviz", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument("metrics_dir", default_value="",

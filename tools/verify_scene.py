@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Offline sanity check of the scene: map x robots x zones.
+"""Verify heading-dependent exits and transport routes with native Nav2 planners.
+
+The default delegates to verify_navigation.py. Pass --all-orientations to run
+the legacy conservative circumscribed-circle diagnostic described below.
+
+Offline sanity check of the scene: map x robots x zones.
 
 Everything the fleet needs is written in three places that can silently
 disagree - the occupancy map, the robot profiles and the zone markers in the
@@ -122,8 +127,8 @@ def main():
                   f"region {comp}")
         comps = {c for c in labels.values() if c}
         if len(comps) > 1:
-            print(f"     FAIL: {len(comps)} disconnected regions among spawn+zones "
-                  f"-> tasks between them are impossible")
+            print(f"     FAIL: {len(comps)} disconnected circle-clearance regions; "
+                  f"run the default SE2 check for rectangular robot feasibility")
             ok = False
         fields[name] = passable
 
@@ -143,4 +148,7 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--all-orientations" in sys.argv:
+        sys.exit(main())
+    from verify_navigation import main as verify_routes
+    sys.exit(verify_routes())

@@ -1,29 +1,36 @@
 # Current fleet: light, heavy, omni and G1 biped (2026-10-10).
-# Footprints are measured from collision shapes; padding mirrors Nav2.
+# Wheels reduced uniformly by 10%; footprints cover collision shapes, padding mirrors Nav2.
 # Each robot has its own charger at its spawn pose, preserving odom anchors.
 fleet:
   - name: light_1
     type: light_diff_amr
-    charger: [-0.30, -0.75, 0.0]    # charger_A, west end of the row
-    spawn:   [-0.30, -0.75, 0.0]
-    charger_exit: [-0.30, 0.20, 1.57079632679]
+    # Centre the westbound reverse segment above the southwest wall protrusion.
+    charger: [-0.30, -0.25, 0.0]
+    spawn:   [-0.30, -0.25, 0.0]
+    charger_exit: [-0.10, -0.25, 0.0]
+    idle_clearance: [-7.00, -0.25, 0.0]
+    startup_clearance: true
   - name: heavy_1
     type: heavy_diff_amr
-    charger: [2.70, -0.85, 0.0]     # charger_C
-    spawn:   [2.70, -0.85, 0.0]
-    charger_exit: [2.70, 0.20, 1.57079632679]
+    charger: [2.70, -0.45, 0.0]     # charger_C; keep spawn and odometry anchor in sync.
+    spawn:   [2.70, -0.45, 0.0]
+    charger_exit: [2.90, -0.45, 0.0]
   - name: omni_1
     type: omni_mecanum_amr
-    charger: [4.20, -0.85, 0.0]     # charger_D, east end of the row
-    spawn:   [4.20, -0.85, 0.0]
-    charger_exit: [4.20, 0.20, 1.57079632679]
+    charger: [4.60, -0.45, 0.0]     # charger_D, east end of the row
+    spawn:   [4.60, -0.45, 0.0]
+    idle_clearance: [-4.80, -0.25, 0.0]
+    charger_exit: [4.60, -0.25, 0.0] # Strafe out without an unnecessary 90-degree turn.
 
   - name: g1_1
     type: g1_humanoid
     charger: [1.20, -0.80, 0.0]   # restored charger_B
     spawn: [1.20, -0.80, 0.0]
-    charger_exit: [1.20, 0.20, 1.57079632679]
-    charger_route: [[3.8, 0.2, 3.14159265359], [1.2, 0.2, -1.57079632679]]
+    # Keep the full turning envelope south of the rack corners.
+    charger_exit: [1.20, -0.20, 0.0]
+    charger_route: [[3.8, -0.2, 3.14159265359], [1.2, -0.2, 0.0]]
+    # Outside the wheel routes: clear the dropoff if the next pickup is busy.
+    idle_clearance: [1.20, -1.00, 0.0]
     spawn_z: 0.127               # 1 cm above the z=0.117 physical floor
 
 robot_types:
@@ -38,12 +45,14 @@ robot_types:
     max_accel: 1.0              # m/s^2
     max_omega: 1.5              # rad/s
     payload_kg: 20.0
-    footprint_padding: 0.06
-    footprint: [0.6888, 0.5412]   # length x width, metres (true collision outline)
+    footprint_padding: 0.03
+    planning_footprint: [1.4318181, 1.125] # State Lattice and path validation use the actual body.
+    planner_footprint_padding: 0.03 # Same body as the local costmap.
+    footprint: [1.4318181, 1.125]   # length x width, metres (true collision outline)
     # Mirrors the costmap inflation in hetero_fleet_bringup/config/
     # nav2_params_light.yaml - keep the two numbers equal. tools/pick_zones.py
     # uses this to decide which floor cells the robot can plan through.
-    inflation_radius: 0.60      # mirrors nav2_params_light.yaml
+    inflation_radius: 1.20      # mirrors nav2_params_light.yaml
     battery_capacity_wh: 480.0
 
     capabilities: [light_payload, narrow_aisle]
@@ -64,8 +73,10 @@ robot_types:
     max_omega: 0.8
     payload_kg: 150.0
     footprint_padding: 0.03
-    footprint: [0.8556, 0.6448]
-    inflation_radius: 0.60      # mirrors nav2_params_heavy.yaml
+    planning_footprint: [1.4927886, 1.125] # State Lattice and path validation use the actual body.
+    planner_footprint_padding: 0.03 # Same body as the local costmap.
+    footprint: [1.4927886, 1.125]
+    inflation_radius: 1.20      # mirrors nav2_params_heavy.yaml
     battery_capacity_wh: 1200.0
 
     capabilities: [heavy_payload]
@@ -88,8 +99,10 @@ robot_types:
     # list below, not by payload.
     payload_kg: 90.0
     footprint_padding: 0.02
-    footprint: [0.672, 0.588]
-    inflation_radius: 0.60      # mirrors nav2_params_omni.yaml
+    planning_footprint: [1.2857139, 1.125] # State Lattice and path validation use the actual body.
+    planner_footprint_padding: 0.02 # Same body as the local costmap.
+    footprint: [1.2857139, 1.125]
+    inflation_radius: 1.20      # mirrors nav2_params_omni.yaml
     battery_capacity_wh: 640.0
 
     capabilities: [precise_docking, omnidirectional]
@@ -104,15 +117,15 @@ robot_types:
     kinematics: legged
     urdf: g1_humanoid.xacro
     controllers: ''
-    max_speed: 0.4
+    max_speed: 0.3
     max_accel: 0.35
-    max_omega: 0.65
+    max_omega: 0.45
     payload_kg: 5.0
-    footprint_padding: 0.04
+    footprint_padding: 0.15
     footprint:
     - 0.6
     - 0.52
-    inflation_radius: 0.6
+    inflation_radius: 0.8
     battery_capacity_wh: 180.0
     capabilities:
     - humanoid_transport
@@ -124,6 +137,12 @@ robot_types:
 # Kept next to the robot data because the cost function's weights only make
 # sense relative to these speeds and energies.
 scheduler:
+  # The charging forecourt cannot support opposing wheel traffic. Finish a
+  # platform's queued jobs, physically park it, then admit the next platform.
+  # G1 remains independent. The collection window groups an incoming task batch.
+  wheel_dispatch_order: [light_1, omni_1, heavy_1]
+  wheel_batch_collect_sec: 60.0
+  wheel_yield_to_g1: true
   # cost = w_travel * travel_time
   #      + w_energy * energy
   #      + w_queue  * estimated_wait
@@ -148,5 +167,5 @@ scheduler:
   # Battery floor: a robot below this will not be offered a new task.
   min_battery_pct: 15.0
   # Simulated handling time at pickup / dropoff, seconds.
-  load_time_sec: 5.0
-  unload_time_sec: 5.0
+  load_time_sec: 3.0
+  unload_time_sec: 3.0
