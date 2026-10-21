@@ -1,0 +1,5 @@
+<library path="hetero_snapshot_obstacle_layer">
+  <class name="hetero_fleet_navigation::SnapshotObstacleLayer" type="hetero_fleet_navigation::SnapshotObstacleLayer" base_class_type="nav2_costmap_2d::Layer">
+    <description>Rebuild current peer obstacles without retaining obsolete fleet scan marks.</description>
+  </class>
+</library>

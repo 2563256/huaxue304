@@ -1,0 +1,11 @@
+task_id,type,robot_id,priority,payload_kg,required_capability,created_at_sec,assigned_at_sec,completed_at_sec,completion_time_sec,deadline_sec,tardy,requeue_count,distance_m,energy_wh
+balanced_10_06,transport,omni_1,2,45.0,omnidirectional,117.278,134.001,220.83,103.552,1800.0,0,0,10.698,15.2572
+balanced_10_09,transport,omni_1,2,65.0,omnidirectional,131.952,260.001,291.196,159.244,1800.0,0,0,5.746,9.7887
+balanced_10_02,transport,omni_1,2,30.0,omnidirectional,98.183,294.001,327.459,229.276,1800.0,0,0,8.951,12.1697
+balanced_10_01,transport,heavy_1,2,95.0,heavy_payload,93.151,534.0,617.276,524.125,1800.0,0,0,19.836,60.1536
+balanced_10_04,transport,heavy_1,2,110.0,heavy_payload,107.685,620.001,685.329,577.644,1800.0,0,0,11.641,36.42
+balanced_10_10,transport,g1_1,2,2.0,humanoid_transport,136.92,764.0,959.513,822.593,1800.0,0,0,19.229,39.4893
+balanced_10_05,transport,g1_1,2,1.0,humanoid_transport,112.655,962.0,1160.079,1047.424,1800.0,0,0,13.598,27.4705
+balanced_10_03,transport,light_1,2,8.0,light_payload,103.19,1472.0,1585.128,1481.938,1800.0,0,0,29.144,25.8906
+balanced_10_08,transport,light_1,2,16.0,light_payload,126.836,1590.001,1658.165,1531.329,1800.0,0,0,9.627,9.7238
+balanced_10_07,transport,light_1,2,12.0,light_payload,122.058,1660.0,1708.786,1586.728,1800.0,0,0,8.176,7.7817

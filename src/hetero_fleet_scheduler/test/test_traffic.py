@@ -16,6 +16,10 @@ def test_all_six_pairs_have_one_consistent_passing_order(a,b,caller_is_first):
     for r in poses:coordinator.observe(r,poses[r],18.1)
     first=a if caller_is_first else b
     request=coordinator.request(first,robots,poses,set(poses),18.1)
+    if 'g1' in (a,b):
+        assert request is None
+        assert coordinator.request(b if first==a else a,robots,poses,set(poses),18.1) is None
+        return
     assert request.winner==a and request.loser==b
     assert coordinator.request(b if first==a else a,robots,poses,set(poses),18.1) is request
     assert not request.parked.is_set() and not request.done.is_set()
@@ -27,13 +31,13 @@ def test_all_six_pairs_have_one_consistent_passing_order(a,b,caller_is_first):
 
 
 def test_a_moving_or_inactive_peer_is_not_evicted():
-    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('g1','light')}
-    poses={'g1':(0,0,0),'light':(1.2,0,0)}
+    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('heavy','light')}
+    poses={'heavy':(0,0,0),'light':(1.2,0,0)}
     for r in poses:c.observe(r,poses[r],0)
-    c.observe('g1',poses['g1'],9);c.observe('light',(1.4,0,3.14),9)
-    assert c.request('g1',robots,poses,set(poses),9) is None
-    c.observe('light',(1.4,0,3.14),18);c.observe('g1',poses['g1'],18)
-    assert c.request('g1',robots,poses,{'g1'},18) is None
+    c.observe('heavy',poses['heavy'],9);c.observe('light',(1.4,0,3.14),9)
+    assert c.request('heavy',robots,poses,set(poses),9) is None
+    c.observe('light',(1.4,0,3.14),18);c.observe('heavy',poses['heavy'],18)
+    assert c.request('heavy',robots,poses,{'heavy'},18) is None
 
 
 def test_sim_clock_reset_clears_motion_age():
@@ -46,6 +50,9 @@ def test_head_on_pair_coordinates_before_either_robot_stops(a,b):
     poses={a:(0.,0.,0.),b:(2.,0.,3.14)}
     for r in poses:c.observe(r,poses[r],10.)
     request=c.request(a,robots,poses,set(poses),10.)
+    if 'g1' in (a,b):
+        assert request is None
+        return
     assert request is not None and request.winner==a
     assert not request.held.is_set()
 
@@ -56,39 +63,42 @@ def test_idle_blocker_yields_even_when_it_has_higher_priority(active,idle):
     for r in poses:c.observe(r,poses[r],0.)
     for r in poses:c.observe(r,poses[r],2.1)
     request=c.request(active,robots,poses,{active},2.1,idle={idle})
+    if 'g1' in (active,idle):
+        assert request is None
+        return
     assert request.winner==active and request.loser==idle and request.loser_idle
 
 
 def test_reverse_motion_also_counts_as_approaching():
-    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('g1','light')}
-    initial={'g1':(2.3,0,0),'light':(0,0,0)}
+    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('heavy','light')}
+    initial={'heavy':(2.3,0,0),'light':(0,0,0)}
     for r,p in initial.items():c.observe(r,p,0.)
-    poses={'g1':(2.15,0,0),'light':(.15,0,0)}
+    poses={'heavy':(2.15,0,0),'light':(.15,0,0)}
     for r,p in poses.items():c.observe(r,p,.5)
     request=c.request('light',robots,poses,set(poses),.5)
-    assert request is not None and request.winner=='g1'
+    assert request is not None and request.winner=='heavy'
 
 
 def test_goal_intent_coordinates_before_local_controller_turns_away():
-    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('g1','light')}
-    poses={'g1':(3.5,0,0),'light':(0,0,0)}
+    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('heavy','light')}
+    poses={'heavy':(3.5,0,0),'light':(0,0,0)}
     for r,p in poses.items():c.observe(r,p,0.)
     assert c.request('light',robots,poses,set(poses),0.) is None
-    targets={'g1':(-2,0),'light':(8,0)}
+    targets={'heavy':(-2,0),'light':(8,0)}
     request=c.request('light',robots,poses,set(poses),0.,targets=targets)
-    assert request is not None and request.winner=='g1'
+    assert request is not None and request.winner=='heavy'
 
 
 def test_robots_in_different_corridors_are_not_coordinated_through_wall():
-    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('g1','light')}
-    poses={'g1':(2,0,3.14),'light':(0,0,0)}
+    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('heavy','light')}
+    poses={'heavy':(2,0,3.14),'light':(0,0,0)}
     for r,p in poses.items():c.observe(r,p,0.)
     assert c.request('light',robots,poses,set(poses),0.,corridor_clear=lambda a,b:False) is None
 
 
 def test_distant_approaching_peer_does_not_cancel_navigation():
-    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('g1','light')}
-    poses={'g1':(0,0,0),'light':(9,0,0)}
+    c=TrafficCoordinator();robots={r:SimpleNamespace(type=TYPES[r]) for r in ('heavy','light')}
+    poses={'heavy':(0,0,0),'light':(9,0,0)}
     for r,p in poses.items():c.observe(r,p,0.)
-    request=c.request('g1',robots,poses,set(poses),0.,targets={'g1':(11,0),'light':(-2,0)},corridor_clear=lambda a,b:True)
+    request=c.request('heavy',robots,poses,set(poses),0.,targets={'heavy':(11,0),'light':(-2,0)},corridor_clear=lambda a,b:True)
     assert request is None

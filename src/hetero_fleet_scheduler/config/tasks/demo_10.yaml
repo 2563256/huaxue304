@@ -38,7 +38,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 8.0
   required_capability: light_payload
@@ -62,7 +62,7 @@ tasks:
   type: transport
   pickup:
   - 5.8
-  - 0.05
+  - -0.20
   - 0.0
   dropoff:
   - 11.0

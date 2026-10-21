@@ -1,0 +1,16 @@
+{
+  "launch_pid": 374083,
+  "mode": "eecbs",
+  "domain": 66,
+  "gz_partition": "huaxue304_B_eecbs_08",
+  "command": [
+    "ros2",
+    "launch",
+    "hetero_fleet_bringup",
+    "bringup.launch.py",
+    "headless:=true",
+    "rviz:=false",
+    "channels_file:=/home/ubuntu/huaxue304_B/src/hetero_fleet_scheduler/config/channels.yaml",
+    "metrics_dir:=/home/ubuntu/huaxue304_B/metrics/eecbs_08"
+  ]
+}

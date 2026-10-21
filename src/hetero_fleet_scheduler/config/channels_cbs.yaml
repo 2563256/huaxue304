@@ -1,0 +1,51 @@
+# Geomap bottlenecks in the map frame. The southern charger row remains an
+# approach area: parked chargers must not permanently own a corridor token.
+# Adjacent sections with insufficient holding space share one exclusive group.
+# Fixed spatial State Lattice routes; SIPP plans continuous-time resource
+# windows, PBS searches partial priorities. Slots advise queue dispatch only;
+# full-body physical tokens and command prediction enforce actual admission.
+scheduling: cbs # cbs selects optimal CT ordering on the finite route catalogue
+# Copy A includes G1 in physical occupancy and SIPP/PBS scheduling.
+reservation_exempt_robots: []
+# First clear the occupied resource, then attempt the charger. A blocked
+# charger must not keep an entire corridor token occupied.
+exit_waypoints: [[-3.0, -0.25, 0.0], [0.0, -0.25, 0.0], [10.8, -0.25, 0.0]]
+# Short retreats on the approach side; navigating all the way to a charger
+# can cross the very stationary peer that is preventing the owner's exit.
+retreat_waypoints: [[-5.2, -0.25, 0.0], [-2.2, -0.25, 0.0], [7.5, -0.25, 0.0], [6.1, -0.25, 0.0]]
+pbs_max_nodes: 64
+pbs_budget_sec: 0.025
+reservation_headway_sec: 0.5
+max_queue_wait_sec: 60.0
+request_distance_m: 3.5
+stop_distance_m: 2.2
+body_margin_m: 0.05
+release_margin_m: 0.10
+pose_timeout_sec: 0.5
+command_timeout_sec: 0.35
+preentry_lease_sec: 20.0
+reaction_time_sec: 0.6
+prediction_decel_mps2: 0.4
+prediction_angular_decel_rps2: 0.6
+channels:
+  - id: north_corridor
+    group: north_corridor
+    bounds: [-3.9, 3.45, 10.6, 5.4] # xmin, ymin, xmax, ymax
+  - id: east_connector
+    group: east_connector
+    bounds: [10.8, 0.85, 13.3, 3.2]
+  - id: center_connector
+    group: center_connector
+    bounds: [0.0, 0.85, 0.9, 3.2]
+  - id: west_connector
+    group: west_connector
+    bounds: [-3.9, 0.85, -2.5, 3.2]
+
+# Advisory schedule hints never override physical ownership or aging.
+schedule_hint_timeout_sec: 12.0
+
+# Copy B: joint native-route catalogue search and rolling live commitments.
+cbs_max_nodes: 512
+cbs_budget_sec: 0.35
+eecbs_weight: 1.2
+mapf_tick_sec: 0.5

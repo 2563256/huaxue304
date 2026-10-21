@@ -25,8 +25,5 @@
   ros_type_name: rosgraph_msgs/msg/Clock
   gz_type_name: gz.msgs.Clock
   direction: GZ_TO_ROS
-- ros_topic_name: /gz/dynamic_pose
-  gz_topic_name: /world/geomap_fleet/dynamic_pose/info
-  ros_type_name: tf2_msgs/msg/TFMessage
-  gz_type_name: gz.msgs.Pose_V
-  direction: GZ_TO_ROS
+# Model names are preserved by hetero_fleet_gz/named_pose_bridge.
+# Generic Pose_V -> TFMessage loses those names on this ROS/Gazebo version.

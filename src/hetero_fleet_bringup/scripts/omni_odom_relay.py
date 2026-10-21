@@ -45,7 +45,7 @@ class OmniOdomRelay(Node):
         self.odom_pub = self.create_publisher(
             Odometry, f'/{self.robot_name}/odom', 10)
         self.create_subscription(
-            TFMessage, '/gz/dynamic_pose', self.pose_callback, 10)
+            TFMessage, '/gz/named_dynamic_pose', self.pose_callback, 1)
 
     @staticmethod
     def yaw_from_quaternion(q):
@@ -68,20 +68,12 @@ class OmniOdomRelay(Node):
             if elapsed < self.min_period:
                 return
         self.last_publish = now
-        if self.pose_index is None:
-            self.pose_index = min(
-                range(len(msg.transforms)),
-                key=lambda i: (
-                    msg.transforms[i].transform.translation.x - self.spawn_x
-                ) ** 2 + (
-                    msg.transforms[i].transform.translation.y - self.spawn_y
-                ) ** 2,
-            )
-        if self.pose_index >= len(msg.transforms):
-            self.pose_index = None
+        # A model may spawn late, disappear or change position in the array.
+        # Identity must never be inferred from proximity or cached array index.
+        own = next((t for t in msg.transforms if t.child_frame_id == self.robot_name), None)
+        if own is None:
             return
-
-        pose = msg.transforms[self.pose_index].transform
+        pose = own.transform
         dx = pose.translation.x - self.spawn_x
         dy = pose.translation.y - self.spawn_y
         c0 = math.cos(self.spawn_yaw)
@@ -91,7 +83,9 @@ class OmniOdomRelay(Node):
         yaw = self.yaw_from_quaternion(pose.rotation) - self.spawn_yaw
         yaw = math.atan2(math.sin(yaw), math.cos(yaw))
 
-        stamp = self.get_clock().now().to_msg()
+        # Keep the simulator acquisition time. Relabelling queued poses with
+        # callback time hides latency and corrupts measured braking velocity.
+        stamp = own.header.stamp
         stamp_seconds = stamp.sec + stamp.nanosec * 1e-9
         vx = vy = wz = 0.0
         if self.previous is not None:

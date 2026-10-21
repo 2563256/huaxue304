@@ -1,4 +1,4 @@
-# G1: forward walking in FollowPath; reverse reserved for BackUp recovery.
+# G1: SE(2) lattice routes match the walking controller's forward/reverse/yaw commands.
 amcl:
   ros__parameters:
     use_sim_time: true
@@ -10,7 +10,7 @@ amcl:
 bt_navigator:
   ros__parameters:
     use_sim_time: true
-    default_nav_to_pose_bt_xml: <bringup_share>/config/fleet_navigation.xml
+    default_nav_to_pose_bt_xml: <bringup_share>/config/g1_navigation.xml
     global_frame: map
     robot_base_frame: <robot_name>/base_footprint
     odom_topic: /<robot_name>/odom
@@ -29,8 +29,10 @@ controller_server:
     - progress_checker
     goal_checker_plugins:
     - general_goal_checker
+    - task_goal_checker
     controller_plugins:
     - FollowPath
+    - TaskFollowPath
     progress_checker:
       plugin: nav2_controller::SimpleProgressChecker
       required_movement_radius: 0.2
@@ -38,26 +40,34 @@ controller_server:
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
       stateful: true
-      xy_goal_tolerance: 0.15
+      xy_goal_tolerance: 0.07
       yaw_goal_tolerance: 0.15
-    FollowPath:
+    task_goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      stateful: false
+      # Leave room for grid quantization inside the scheduler's 0.15 m
+      # task radius. Controller tolerance is measured from the PATH endpoint.
+      xy_goal_tolerance: 0.07
+      yaw_goal_tolerance: 3.141593
+
+    FollowPath: &path_controller
       plugin: nav2_mppi_controller::MPPIController
       time_steps: 56
       model_dt: 0.05
       batch_size: 2000
       vx_std: 0.2
-      vy_std: 0.0
+      vy_std: 0.08
       wz_std: 0.2
-      vx_max: 0.4
+      vx_max: 0.3
       vx_min: -0.12
-      vy_max: 0.0
-      wz_max: 0.65
+      vy_max: 0.12
+      wz_max: 0.45
       iteration_count: 1
       prune_distance: 1.4
       transform_tolerance: 0.1
       temperature: 0.3
       gamma: 0.015
-      motion_model: DiffDrive
+      motion_model: Omni
       visualize: false
       TrajectoryVisualizer:
         trajectory_step: 5
@@ -80,13 +90,13 @@ controller_server:
         cost_power: 1
         cost_weight: 8.0
         threshold_to_consider: 1.4
-      GoalAngleCritic:
+      GoalAngleCritic: &goal_angle
         enabled: true
         cost_power: 1
         cost_weight: 3.0
         threshold_to_consider: 0.5
       PreferForwardCritic:
-        enabled: true
+        enabled: false
         cost_power: 1
         cost_weight: 3.0
         threshold_to_consider: 0.5
@@ -105,9 +115,9 @@ controller_server:
         cost_weight: 14.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 4
-        threshold_to_consider: 0.5
-        offset_from_furthest: 20
-        use_path_orientations: false
+        threshold_to_consider: 0.15
+        offset_from_furthest: 4
+        use_path_orientations: true
       PathFollowCritic:
         enabled: true
         cost_power: 1
@@ -115,13 +125,19 @@ controller_server:
         offset_from_furthest: 12
         threshold_to_consider: 0.5
       PathAngleCritic:
-        enabled: true
+        enabled: false
         cost_power: 1
         cost_weight: 2.0
         offset_from_furthest: 4
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
-        mode: 0
+        mode: 2
+    TaskFollowPath:
+      <<: *path_controller
+      GoalAngleCritic:
+        <<: *goal_angle
+        enabled: false
+
 local_costmap:
   local_costmap:
     ros__parameters:
@@ -136,11 +152,20 @@ local_costmap:
       height: 4
       resolution: 0.05
       footprint: '[[0.30, 0.26], [0.30, -0.26], [-0.30, -0.26], [-0.30, 0.26]]'
-      footprint_padding: 0.04
+      # Extra clearance covers measured gait drift during turns.
+      footprint_padding: 0.15
       plugins:
+      - static_layer
       - obstacle_layer
       - robot_obstacle_layer
       - inflation_layer
+      # Keep mapped walls visible to MPPI even without a physical lidar return.
+      static_layer:
+        plugin: nav2_costmap_2d::StaticLayer
+        map_topic: /<robot_name>/map
+        map_subscribe_transient_local: true
+        subscribe_to_updates: false
+        footprint_clearing_enabled: false
       obstacle_layer:
         plugin: nav2_costmap_2d::ObstacleLayer
         enabled: true
@@ -156,26 +181,26 @@ local_costmap:
           obstacle_max_range: 10.0
           obstacle_min_range: 0.0
       robot_obstacle_layer:
-        plugin: nav2_costmap_2d::ObstacleLayer
+        plugin: hetero_fleet_navigation::SnapshotObstacleLayer
         enabled: true
         combination_method: 1
         observation_sources: robot_obstacles
         robot_obstacles:
-          topic: /<robot_name>/robot_obstacles
+          topic: /<robot_name>/robot_planning_points
           max_obstacle_height: 2.0
-          clearing: true
+          clearing: false
           marking: true
           inf_is_valid: true
           observation_persistence: 0.0
-          data_type: LaserScan
-          raytrace_max_range: 12.0
+          data_type: PointCloud2
+          raytrace_max_range: 50.0
           raytrace_min_range: 0.0
-          obstacle_max_range: 10.0
+          obstacle_max_range: 50.0
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 3.0
-        inflation_radius: 0.6
+        inflation_radius: 0.8
       always_reset_initial_costmap: false
       track_unknown_space: false
       transform_tolerance: 0.5
@@ -189,7 +214,8 @@ global_costmap:
       global_frame: map
       robot_base_frame: <robot_name>/base_footprint
       footprint: '[[0.30, 0.26], [0.30, -0.26], [-0.30, -0.26], [-0.30, 0.26]]'
-      footprint_padding: 0.04
+      # Extra clearance covers measured gait drift during turns.
+      footprint_padding: 0.15
       resolution: 0.05
       track_unknown_space: true
       plugins:
@@ -214,26 +240,26 @@ global_costmap:
           obstacle_max_range: 10.0
           obstacle_min_range: 0.0
       robot_obstacle_layer:
-        plugin: nav2_costmap_2d::ObstacleLayer
+        plugin: hetero_fleet_navigation::SnapshotObstacleLayer
         enabled: true
         combination_method: 1
         observation_sources: robot_obstacles
         robot_obstacles:
-          topic: /<robot_name>/robot_planning_obstacles
+          topic: /<robot_name>/robot_planning_points
           max_obstacle_height: 2.0
-          clearing: true
+          clearing: false
           marking: true
           inf_is_valid: true
           observation_persistence: 0.0
-          data_type: LaserScan
-          raytrace_max_range: 12.0
+          data_type: PointCloud2
+          raytrace_max_range: 50.0
           raytrace_min_range: 0.0
-          obstacle_max_range: 10.0
+          obstacle_max_range: 50.0
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 3.0
-        inflation_radius: 0.6
+        inflation_radius: 0.8
       transform_tolerance: 0.5
 planner_server:
   ros__parameters:
@@ -241,16 +267,26 @@ planner_server:
     expected_planner_frequency: 0.5
     planner_plugins:
     - GridBased
-    GridBased:
-      plugin: nav2_smac_planner::SmacPlanner2D
-      tolerance: 0.125
-      downsample_costmap: false
-      allow_unknown: true
+    - TaskGridBased
+    GridBased: &spatial_planner
+      plugin: hetero_fleet_navigation::SweptLattice
+      lattice_filepath: <bringup_share>/config/lattice/omni_64.json
+      allow_reverse_expansion: false
+      swept_footprint: '[[0.30, 0.26], [0.30, -0.26], [-0.30, -0.26], [-0.30, 0.26]]'
+      swept_footprint_padding: 0.15
+      rotation_penalty: 2.0
+      heuristic_weight: 1.5
+      # Search connection radius; the terminal sweep still ends at the exact goal.
+      tolerance: 0.05
+      allow_unknown: false
       max_iterations: 1000000
-      max_on_approach_iterations: 1000
-      max_planning_time: 2.0
-      cost_travel_multiplier: 2.0
-      use_final_approach_orientation: false
+      max_planning_time: 8.0
+      reverse_penalty: 2.0
+      cost_penalty: 2.0
+    TaskGridBased:
+      <<: *spatial_planner
+      match_goal_heading: false
+
 smoother_server:
   ros__parameters:
     use_sim_time: true
@@ -297,20 +333,20 @@ velocity_smoother:
     scale_velocities: false
     feedback: OPEN_LOOP
     max_velocity:
-    - 0.4
-    - 0.0
-    - 0.65
+    - 0.3
+    - 0.12
+    - 0.45
     min_velocity:
     - -0.15
-    - 0.0
-    - -0.65
+    - -0.12
+    - -0.45
     max_accel:
     - 0.35
-    - 0.0
+    - 0.15
     - 0.65
     max_decel:
     - -0.5
-    - 0.0
+    - -0.2
     - -1.0
     odom_topic: /<robot_name>/odom
     odom_duration: 0.1
@@ -324,7 +360,7 @@ collision_monitor:
     use_sim_time: true
     base_frame_id: <robot_name>/base_footprint
     odom_frame_id: <robot_name>/odom
-    cmd_vel_in_topic: cmd_vel_smoothed
+    cmd_vel_in_topic: cmd_vel_reserved
     cmd_vel_out_topic: cmd_vel
     transform_tolerance: 0.2
     source_timeout: 1.0

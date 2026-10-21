@@ -1,16 +1,12 @@
 <?xml version="1.0"?>
-<!-- Scene update 2026-10-10: all linear dimensions are twice the
-     previous model, scale s=0.82. Measured ground outline: 0.6888 × 0.5412 m.
-     Visual meshes, collision shapes, wheel positions and sensors share s;
-     masses scale with s^3 and inertias with s^5.
-     Controllers and Nav2 footprints must match this geometry. -->
+<!-- Reduced uniformly by 10% for fleet clearance; collision outline 1.4318181 x 1.125 m. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="light_diff_amr">
   <xacro:arg name="robot_name" default="light_1"/>
   <xacro:arg name="controllers_file" default=""/>
   <xacro:include filename="$(find hetero_fleet_description)/urdf/common.xacro"/>
   <xacro:property name="controllers_file" value="$(arg controllers_file)"/>
   <xacro:property name="robot_name" value="$(arg robot_name)"/>
-  <xacro:property name="s" value="0.82"/>
+  <xacro:property name="s" value="1.704545454510"/>
   <xacro:property name="base_length" value="${0.80 * s}"/>
   <xacro:property name="base_width" value="${0.54 * s}"/>
   <xacro:property name="base_height" value="${0.22 * s}"/>
@@ -58,7 +54,8 @@
       <visual><origin rpy="${pi / 2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry><material name="rubber"><color rgba="0.05 0.05 0.05 1"/></material></visual>
       <collision><origin rpy="${pi / 2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
     </link>
-    <joint name="${side}_wheel_joint" type="continuous"><parent link="base_link"/><child link="${side}_wheel_link"/><origin xyz="0 ${y} 0"/><axis xyz="0 1 0"/><limit effort="8" velocity="18"/></joint>
+    <!-- Torque scales with mass times length; the body/inertia already use s^3/s^5. -->
+    <joint name="${side}_wheel_joint" type="continuous"><parent link="base_link"/><child link="${side}_wheel_link"/><origin xyz="0 ${y} 0"/><axis xyz="0 1 0"/><limit effort="${8 * s**4}" velocity="18"/></joint>
   </xacro:macro>
   <xacro:drive_wheel side="left" y="${base_width / 2 + wheel_width / 2}"/>
   <xacro:drive_wheel side="right" y="${-base_width / 2 - wheel_width / 2}"/>

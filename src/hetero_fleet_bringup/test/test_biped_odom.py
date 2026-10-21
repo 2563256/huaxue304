@@ -28,6 +28,7 @@ def test_biped_roll_and_root_height_reach_sensor_tf(full_orientation):
     obj.odom_pub = SimpleNamespace(publish=published.append)
     obj.tf_broadcaster = SimpleNamespace(sendTransform=transforms.append)
     transform = TransformStamped()
+    transform.child_frame_id = 'g1_1'
     transform.transform.translation.x = 1.2
     transform.transform.translation.y = -.8
     transform.transform.translation.z = .107
@@ -50,3 +51,18 @@ def test_biped_roll_and_root_height_reach_sensor_tf(full_orientation):
         assert tf.translation.z == 0.0
     assert odom.pose.pose.orientation.x == 0.0
     assert odom.pose.pose.position.z == 0.0
+
+
+def test_pose_timestamp_and_velocity_use_acquisition_time():
+    obj = object.__new__(module.OmniOdomRelay)
+    obj.robot_name='omni_1';obj.spawn_x=obj.spawn_y=obj.spawn_yaw=0.
+    obj.full_orientation=False;obj.min_period=0.;obj.last_publish=None
+    obj.previous=(10.,0.,0.,0.)
+    obj.get_clock=lambda:SimpleNamespace(now=lambda:SimpleNamespace(nanoseconds=20_000_000_000))
+    published=[];obj.odom_pub=SimpleNamespace(publish=published.append)
+    obj.tf_broadcaster=SimpleNamespace(sendTransform=lambda _:None)
+    t=TransformStamped();t.child_frame_id='omni_1';t.header.stamp.sec=11
+    t.transform.translation.x=.2;t.transform.rotation.w=1.
+    obj.pose_callback(TFMessage(transforms=[t]))
+    assert published[0].header.stamp.sec==11
+    assert published[0].twist.twist.linear.x==pytest.approx(.2)

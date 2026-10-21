@@ -10,6 +10,90 @@
 工作空间：`/home/xuzhijie/hetero_fleet_geomap_ws`
 （原工作空间 `/home/xuzhijie/hetero_fleet_ws` 没有被改动）
 
+## 2026-10-16 十任务实测与保守交接
+
+当前工作空间：`/home/ubuntu/huaxue304`。三种小车在上一版模型上统一缩小 10%，
+视觉、碰撞体、轮径轮距、惯量与导航轮廓同步；G1 保持原尺寸。
+本轮 Gazebo 无界面连续实测：原配置 10 个任务全部完成、0 个永久失败、0 个逾期。
+停靠位筛选已从外接圆改为实际矩形车身加规划余量，20 次取卸货均使用原始标记，
+没有旁侧点偏移。到点不强制转向，停留为 3.000–3.027 秒 ROS 时间，
+到达误差相对原标记最大约 0.148 m。
+
+当前采用保守分批派工，优先完成率，降低多车并发度。小车依次为轻车、全向车、重车，
+实际停车后交接；G1 不申请通道令牌，派工前验证真实可行路径，小车为其执行和清场让行。
+规划地图使用全部队友的填充矩形点云，覆盖内部、背面和被其他车遮挡的车辆。
+轻车已修正实际驱动扭矩不足导致的转向失败。265 项 Python 检查通过，受影响的原生检查已复跑。
+本轮在线将全向车速度平滑器死区从 `[0.008,0.008,0.02]` 改为 `[0,0,0]`，
+避免转角处微小纠偏被清零，随后完成停车；设置已写入默认配置。
+监测程序单独重载并将墙钟观察上限改为 4200 秒，任务和机器人状态未重置、未重复下发，
+原任务期限仍为 1800 秒 ROS 时间。尚未另做最终默认参数从启动到结束的完整十任务复跑。
+
+重新运行：每个终端均先执行 `cd /home/ubuntu/huaxue304`，
+`source /opt/ros/jazzy/setup.bash`、`source install/setup.bash` 和 `export ROS_DOMAIN_ID=42`。
+终端一运行 `ros2 launch hetero_fleet_bringup bringup.launch.py headless:=true rviz:=false`；
+等待四套导航激活、G1 平衡就绪后，终端二运行：
+
+```bash
+ros2 run hetero_fleet_scheduler task_publisher --scenario /home/ubuntu/huaxue304/src/hetero_fleet_scheduler/config/tasks/demo_10.yaml --interval 8
+```
+
+下面旧工作空间路径和早期实测数据仅供历史参考，当前参数以 `robot_profiles.yaml` 与 `README.md` 为准。
+
+## 2026-10-15 任务点与 G1 通行
+
+取货、卸货各到点停车 3 秒（仿真时间），忽略任务点指定朝向。G1 免通道预约，
+使用动态避障绕开小车；三台小车继续按 SIPP/PBS 预约。保留全部车身碰撞监测，
+无法实际并排时仍可能停车。修改已编译，重启完整 bringup 后生效。
+
+```bash
+cd /home/ubuntu/huaxue304
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+ros2 launch hetero_fleet_bringup bringup.launch.py
+```
+
+诊断状态：`/<robot>/task_hold` 表示作业停车，`/channel_reservations` 的
+`exempt_robots` 应包含 `g1_1`。G1 不产生 `channel_wait`，但仍需要自身有效定位。
+
+## 2026-10-14 通道预约
+
+重启 Nav2 / 完整 bringup 后默认启用 SIPP/PBS 通道排队优化。北侧与东、中、西连接段
+共享 `upper_loop`，车身及尾部边距完全驶离后放行下一台。南侧泊位行保留现有让行。
+调度器在排队时取消导航、等待授权、重发目标；此等待不算卡住恢复。
+RViz 的 Channel Reservations 显示预约范围、策略、占用者和队列。
+`channels.yaml` 设置 `scheduling: fifo` 可恢复原策略；修改后重新构建并重启 Nav2。
+
+```bash
+ros2 topic echo /channel_reservations --once
+# 自定义通道；坐标必须对应当前 map。
+ros2 launch hetero_fleet_bringup bringup.launch.py channels_file:=/absolute/path/channels.yaml
+# 诊断开关，仍保留指令看门狗和碰撞监测。
+ros2 launch hetero_fleet_bringup bringup.launch.py reserve_channels:=false
+python3 tools/verify_reservations.py
+```
+
+配置及验证范围见 [CHANNEL_RESERVATIONS.md](CHANNEL_RESERVATIONS.md)。
+预约与路径回放已验证。上轮 Gazebo 完整实测为完成 2 个、失败 8 个，未达到 10/10。
+现已增加通道外出场点和短退让点，避免 G1 占住充电位时锁住整个通道；213 项 Python
+检查和 7 项完整车身退出重放通过，新增行为仍需 Gazebo 复测。
+
+## 2026-10-14 几何修正
+
+当前轮式泊位为 light `(-0.30,-0.25)`、heavy `(2.70,-0.45)`、omni `(4.60,-0.45)`，
+差速车向前离桩至 `(-0.10,-0.25)`、`(2.90,-0.45)`；麦轮横移至 `(4.60,-0.25)`，
+离桩朝向均为 0。`pickup_E=(5.80,-0.20)`，`dropoff_E=(0.00,4.22)`。
+下文早期坐标与圆形净空数字仅供历史参考，当前配置以 `robot_profiles.yaml` 为准。
+四台机器人使用 `hetero_fleet_navigation::SweptLattice`（0.05 m、64 朝向）：
+差速前进/倒车/旋转，麦轮还可横移。全局、局部和基元扫掠检查采用同一真实车身。
+启动时检查控制集的车型、分辨率和实际轮廓；修改机器人尺寸需同步三个参数区域。
+规划时限为 8 s，启发式权重 1.5，不保证最优成本。控制集和插件参数改变后需重新配置或重启。
+
+编译后在已 source 的终端运行 `python3 tools/verify_scene.py`，默认检查实际 Nav2
+路线与完整车身的连续扫过区域；`--all-orientations` 才运行旧的保守外接圆诊断。
+`python3 tools/verify_lattice.py` 另检查运动学、旋转扫掠与动态障碍增删回归。
+检查不启动 Gazebo，也不验证多车占道。新的出生点和导航参数需重新启动仿真加载。
+
 ## 0. 每个新终端的一次性环境准备
 
 ```bash

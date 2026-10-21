@@ -82,6 +82,8 @@ def generate_launch_description():
     if transports:
         pre_actions.append(SetEnvironmentVariable('FASTDDS_BUILTIN_TRANSPORTS', transports))
     actions = [
+        Node(package='hetero_fleet_gz', executable='named_pose_bridge', output='screen',
+             parameters=[{'use_sim_time':True,'robot_names':[r['name'] for r in profiles['fleet']], 'publish_rate_hz':40.0}]),
         Node(package='ros_gz_bridge', executable='parameter_bridge', name='ros_gz_bridge', output='screen', parameters=[{'config_file': cfg}]),
         Node(package='hetero_fleet_bringup', executable='scan_frame_relay.py', name='scan_frame_relay', output='screen', parameters=[{'use_sim_time': True}]),
     ]
@@ -114,6 +116,7 @@ def generate_launch_description():
                 'spawn_x': float(sx),
                 'spawn_y': float(sy),
                 'spawn_yaw': float(syaw),
+                'publish_rate_hz': 0.0, # Named bridge is throttled at 40 Hz.
                 'full_orientation': profiles['robot_types'][robot['type']]['kinematics'] == 'legged',
                 'ground_z': 0.117,
             }],

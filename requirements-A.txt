@@ -1,0 +1,4 @@
+# Isolated in .venv; do not install these into the system ROS Python.
+ortools==9.11.4210
+numpy==1.26.4
+pandas==2.3.3

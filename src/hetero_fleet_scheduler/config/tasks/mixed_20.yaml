@@ -6,11 +6,11 @@ tasks:
   type: transport
   pickup:
   - 5.8
-  - 0.05
+  - -0.20
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 30.0
   required_capability: omnidirectional
@@ -24,7 +24,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 45.0
   required_capability: omnidirectional
@@ -38,7 +38,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 8.0
   required_capability: light_payload
@@ -52,7 +52,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 95.0
   required_capability: heavy_payload
@@ -160,11 +160,11 @@ tasks:
   type: transport
   pickup:
   - 5.8
-  - 0.05
+  - -0.20
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 8.0
   required_capability: light_payload
@@ -174,7 +174,7 @@ tasks:
   type: transport
   pickup:
   - 5.8
-  - 0.05
+  - -0.20
   - 0.0
   dropoff:
   - 11.0
@@ -192,7 +192,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 95.0
   required_capability: heavy_payload
@@ -206,7 +206,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 12.0
   required_capability: light_payload
@@ -216,7 +216,7 @@ tasks:
   type: transport
   pickup:
   - 5.8
-  - 0.05
+  - -0.20
   - 0.0
   dropoff:
   - 8.1
@@ -248,7 +248,7 @@ tasks:
   - 0.0
   dropoff:
   - 0.0
-  - 4.1
+  - 4.22
   - 0.0
   payload_kg: 1.0
   required_capability: humanoid_transport
@@ -272,7 +272,7 @@ tasks:
   type: transport
   pickup:
   - 5.8
-  - 0.05
+  - -0.20
   - 0.0
   dropoff:
   - 8.1
