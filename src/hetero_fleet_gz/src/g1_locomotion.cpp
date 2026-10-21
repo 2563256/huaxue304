@@ -1,4 +1,5 @@
 #include "g1_policy.hpp"
+#include "g1_planar_tracker.hpp"
 #include <algorithm>
 #include <array>
 #include <geometry_msgs/msg/twist.hpp>
@@ -39,8 +40,8 @@ class G1Locomotion final : public gz::sim::System,
   gz::math::Vector3d command;
   double scale = 1, now = 0, start = -1, nextPolicy = 0, lastCmd = -100,
          lastPub = -100;
-  bool initialized = false, fallen = false, holding = false;
-  gz::math::Vector3d holdPoint;
+  bool initialized = false, fallen = false;
+  G1PlanarTracker planarTracker;
   double heading = 0, lastControl = 0;
   void Configure(const gz::sim::Entity &e,
                  const std::shared_ptr<const sdf::Element> &sdf,
@@ -133,19 +134,13 @@ class G1Locomotion final : public gz::sim::System,
       lastControl = now;
       if (now - start < .1)
         heading = rot.Yaw();
-      bool stationary = std::hypot(cmd.X(), cmd.Y()) < .01;
-      if (stationary) {
-        if (!holding) {
-          holdPoint = pose.Pos();
-          heading = rot.Yaw();
-          holding = true;
-        }
-        auto correction = rot.RotateVectorReverse(holdPoint - pose.Pos());
-        cmd.X(std::clamp(correction.X() * 1.2, -.15, .15));
-        cmd.Y(std::clamp(correction.Y() * 1.2, -.15, .15));
-      } else {
-        holding = false;
-      }
+      const bool wasHolding = planarTracker.holding();
+      auto planar = planarTracker.update(pose.Pos().X(), pose.Pos().Y(), rot.Yaw(),
+                                          cmd.X(), cmd.Y(), dt);
+      if (planarTracker.holding() && !wasHolding)
+        heading = rot.Yaw();
+      cmd.X(planar[0]);
+      cmd.Y(planar[1]);
       heading += cmd.Z() * dt;
       auto headingError = std::atan2(std::sin(heading - rot.Yaw()),
                                      std::cos(heading - rot.Yaw()));

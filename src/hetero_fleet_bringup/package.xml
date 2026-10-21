@@ -40,4 +40,5 @@
     <build_type>ament_cmake</build_type>
   </export>
   <exec_depend>hetero_fleet_navigation</exec_depend>
+  <exec_depend>sensor_msgs_py</exec_depend>
 </package>

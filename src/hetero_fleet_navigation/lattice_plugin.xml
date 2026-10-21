@@ -1,0 +1,5 @@
+<library path="hetero_swept_lattice">
+  <class name="hetero_fleet_navigation::SweptLattice" type="hetero_fleet_navigation::SweptLattice" base_class_type="nav2_core::GlobalPlanner">
+    <description>State Lattice A* with continuous rectangular swept-body validation of every primitive.</description>
+  </class>
+</library>

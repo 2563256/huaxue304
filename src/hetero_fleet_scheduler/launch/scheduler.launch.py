@@ -28,6 +28,7 @@ def generate_launch_description():
                 "autostart_tasks", default_value="false",
                 description="Begin replaying tasks_file immediately",
             ),
+            DeclareLaunchArgument("schedule_config", default_value=os.path.join(pkg,"config","joint_schedule.yaml")),
             DeclareLaunchArgument("task_interval_sec", default_value="8.0"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument(
@@ -44,7 +45,7 @@ def generate_launch_description():
                 executable="fleet_manager",
                 name="fleet_manager",
                 output="screen",
-                parameters=[
+                parameters=[LaunchConfiguration("schedule_config"),
                     {
                         "tasks_file": LaunchConfiguration("tasks_file"),
                         "autostart_tasks": LaunchConfiguration("autostart_tasks"),

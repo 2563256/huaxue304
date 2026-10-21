@@ -11,3 +11,7 @@ log/
 # Per-run experiment output (fleet_manager) and rendered configs (launch).
 metrics/
 generated/
+
+# Copy A local solver dependencies and scratch verification.
+.venv/
+work/

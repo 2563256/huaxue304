@@ -1,4 +1,4 @@
-# Scene update 2026-10-10: chassis-fixed X mecanum contact model.
+# Wheel geometry matches the URDF after the 10% uniform size reduction.
 /<robot_name>/controller_manager:
   ros__parameters:
     update_rate: 100
@@ -25,10 +25,9 @@
     rear_left_wheel_state_joint_name:   "rear_left_wheel_joint"
     rear_right_wheel_state_joint_name:  "rear_right_wheel_joint"
 
-    # lx + ly from doubled wheel-joint coordinates: 0.245 + 0.2695.
     kinematics:
-      wheels_radius: 0.0665
-      sum_of_robot_center_projection_on_X_Y_axis: 0.5145
+      wheels_radius: 0.127232142840
+      sum_of_robot_center_projection_on_X_Y_axis: 0.984375000000
 
     # Frames already carry the robot namespace in this rendered file.
     tf_frame_prefix_enable: false

@@ -1,8 +1,9 @@
-# Omni AMR: 0.672 x 0.588 m collision footprint, 0.55 m/s forward.
-# Chassis-fixed X mecanum contacts reproduce forward/strafe/yaw consistently.
-# MPPI and the velocity smoother use matching acceleration constraints.
-# Inflation is a soft cost field; clearance depends on the padded footprint.
-# The launch file resolves <robot_name> and <bringup_share>.
+# State Lattice navigation, enlarged fleet (2026-10-14).
+# Physical footprint 1.2857139 x 1.125 m; global/local/swept geometry match.
+# Control sets: 0.05 m, 64 headings, 0.50 m curve radius, with rotations.
+# MPPI follows path orientations; the omni model also permits lateral moves.
+# Inflation is a soft cost field outside the actual padded rectangular body.
+# The launch file resolves <robot_name>/<bringup_share> and validates the lattice.
 
 # AMCL runs one filter per robot against the shared map. The frame ids MUST be
 # namespaced: the TF tree contains <robot_name>/odom and
@@ -44,8 +45,8 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins: ["general_goal_checker"]
-    controller_plugins: ["FollowPath"]
+    goal_checker_plugins: ["general_goal_checker", "task_goal_checker"]
+    controller_plugins: ["FollowPath", "TaskFollowPath"]
 
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
@@ -60,7 +61,13 @@ controller_server:
       xy_goal_tolerance: 0.15
       yaw_goal_tolerance: 0.15
 
-    FollowPath:
+    task_goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      stateful: false
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 3.141593
+
+    FollowPath: &path_controller
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 56
       model_dt: 0.05
@@ -100,7 +107,7 @@ controller_server:
         cost_power: 1
         cost_weight: 10.0
         threshold_to_consider: 1.4
-      GoalAngleCritic:
+      GoalAngleCritic: &goal_angle
         enabled: true
         cost_power: 1
         cost_weight: 3.0
@@ -127,9 +134,9 @@ controller_server:
         cost_weight: 16.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 4
-        threshold_to_consider: 0.5
-        offset_from_furthest: 20
-        use_path_orientations: false
+        threshold_to_consider: 0.15
+        offset_from_furthest: 4
+        use_path_orientations: true
       PathFollowCritic:
         enabled: true
         cost_power: 1
@@ -146,7 +153,13 @@ controller_server:
         offset_from_furthest: 4
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
-        mode: 0
+        mode: 2
+
+    TaskFollowPath:
+      <<: *path_controller
+      GoalAngleCritic:
+        <<: *goal_angle
+        enabled: false
 
 local_costmap:
   local_costmap:
@@ -164,9 +177,9 @@ local_costmap:
       # A robot_radius of 0.40 m would be read as the *inscribed* radius, so
       # every cell within 0.40 m of a shelf would be scored lethal-to-the-
       # centre even though the base can physically stand closer. The polygon's
-      # inscribed radius is the true 0.176 m half-width, so a stance the robot
+      # inscribed radius is the true 0.625 m half-width, so a stance the robot
       # can legally reach is never reported as occupied.
-      footprint: "[[0.336, 0.294], [0.336, -0.294], [-0.336, -0.294], [-0.336, 0.294]]"
+      footprint: '[[0.64285695, 0.5625], [0.64285695, -0.5625], [-0.64285695, -0.5625], [-0.64285695, 0.5625]]'
       # 3 cm of padding on top of the true outline. Without it the costmap's
       # lethal radius equals the physical contact distance, so a robot that
       # brushes a wall sits inside its own lethal cell and MPPI finds no
@@ -178,7 +191,14 @@ local_costmap:
       # without it the costmap only pushes updates to existing subscribers and
       # RViz shows "No map received" for this robot.
       always_send_full_costmap: true
-      plugins: ["obstacle_layer", "robot_obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "robot_obstacle_layer", "inflation_layer"]
+      # Keep mapped walls visible to MPPI even without a physical lidar return.
+      static_layer:
+        plugin: nav2_costmap_2d::StaticLayer
+        map_topic: /<robot_name>/map
+        map_subscribe_transient_local: true
+        subscribe_to_updates: false
+        footprint_clearing_enabled: false
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
@@ -196,26 +216,26 @@ local_costmap:
         # Other vehicles, synthesised - local costmap only, see the note in
         # nav2_params_light.yaml.
       robot_obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
+        plugin: "hetero_fleet_navigation::SnapshotObstacleLayer"
         enabled: true
         combination_method: 1
         observation_sources: robot_obstacles
         robot_obstacles:
-          topic: /<robot_name>/robot_obstacles
+          topic: /<robot_name>/robot_planning_points
           max_obstacle_height: 2.0
-          clearing: true
+          clearing: false
           marking: true
           inf_is_valid: true
           observation_persistence: 0.0
-          data_type: "LaserScan"
-          raytrace_max_range: 12.0
+          data_type: "PointCloud2"
+          raytrace_max_range: 50.0
           raytrace_min_range: 0.0
-          obstacle_max_range: 10.0
+          obstacle_max_range: 50.0
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.5
-        inflation_radius: 0.60
+        inflation_radius: 1.20
       always_reset_initial_costmap: false
       # Local rolling window: unobserved cells are free (see the note in
       # nav2_params_light.yaml - MPPI treats NO_INFORMATION as an obstacle, so
@@ -233,16 +253,12 @@ global_costmap:
       global_frame: map
       robot_base_frame: <robot_name>/base_footprint
       # See the note on the local costmap: a rectangular footprint keeps the
-      # inscribed radius at the true 0.176 m half-width, so the robot cannot
+      # inscribed radius at the true 0.625 m half-width, so the robot cannot
       # be stranded in a cell it is told it cannot occupy.
-      footprint: "[[0.336, 0.294], [0.336, -0.294], [-0.336, -0.294], [-0.336, 0.294]]"
-      # 3 cm of padding on top of the true outline. Without it the costmap's
-      # lethal radius equals the physical contact distance, so a robot that
-      # brushes a wall sits inside its own lethal cell and MPPI finds no
-      # feasible rollout ("Optimizer fail to compute path") - measured as 42
-      # failures and a wedged fleet in one run. The padding is what restores
-      # the margin the old undersized footprint was accidentally providing.
-      footprint_padding: 0.02
+      footprint: '[[0.64285695, 0.5625], [0.64285695, -0.5625], [-0.64285695, -0.5625], [-0.64285695, 0.5625]]'
+      # Same physical body as the local costmap and State Lattice sweep.
+      # Local control uses this vehicle\'s measured body and smaller padding.
+      footprint_padding: 0.02 # Match the physical swept body.
       always_send_full_costmap: true
       resolution: 0.05
       track_unknown_space: true
@@ -268,26 +284,26 @@ global_costmap:
           obstacle_max_range: 10.0
           obstacle_min_range: 0.0
       robot_obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
+        plugin: "hetero_fleet_navigation::SnapshotObstacleLayer"
         enabled: true
         combination_method: 1
         observation_sources: robot_obstacles
         robot_obstacles:
-          topic: /<robot_name>/robot_planning_obstacles
+          topic: /<robot_name>/robot_planning_points
           max_obstacle_height: 2.0
-          clearing: true
+          clearing: false
           marking: true
           inf_is_valid: true
           observation_persistence: 0.0
-          data_type: "LaserScan"
-          raytrace_max_range: 12.0
+          data_type: "PointCloud2"
+          raytrace_max_range: 50.0
           raytrace_min_range: 0.0
-          obstacle_max_range: 10.0
+          obstacle_max_range: 50.0
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.5
-        inflation_radius: 0.60
+        cost_scaling_factor: 1.5
+        inflation_radius: 1.20
       transform_tolerance: 0.5
 
 planner_server:
@@ -295,17 +311,30 @@ planner_server:
     use_sim_time: true
     # Expected computation cadence only; the BT controls replanning triggers.
     expected_planner_frequency: 0.5
-    planner_plugins: ["GridBased"]
-    GridBased:
-      plugin: "nav2_smac_planner::SmacPlanner2D"
-      tolerance: 0.125
-      downsample_costmap: false
-      allow_unknown: true
+    planner_plugins: ["GridBased", "TaskGridBased", "RetreatGridBased"]
+    GridBased: &spatial_planner
+      plugin: hetero_fleet_navigation::SweptLattice
+      lattice_filepath: <bringup_share>/config/lattice/omni_64.json
+      allow_reverse_expansion: false
+      swept_footprint: '[[0.64285695, 0.5625], [0.64285695, -0.5625], [-0.64285695, -0.5625], [-0.64285695, 0.5625]]'
+      swept_footprint_padding: 0.02
+      rotation_penalty: 2.0
+      heuristic_weight: 1.5
+      tolerance: 0.05
+      allow_unknown: false
       max_iterations: 1000000
-      max_on_approach_iterations: 1000
-      max_planning_time: 2.0
-      cost_travel_multiplier: 2.0
-      use_final_approach_orientation: false
+      max_planning_time: 8.0
+      reverse_penalty: 2.0
+      cost_penalty: 2.0
+
+    TaskGridBased:
+      <<: *spatial_planner
+      match_goal_heading: false
+    RetreatGridBased:
+      <<: *spatial_planner
+      match_goal_heading: true
+      reverse_penalty: 1.0
+
 
 smoother_server:
   ros__parameters:
@@ -355,7 +384,9 @@ velocity_smoother:
     max_decel: [-0.7, -0.7, -1.4]
     odom_topic: /<robot_name>/odom
     odom_duration: 0.2
-    deadband_velocity: [0.008, 0.008, 0.02]
+    # MPPI may need millimetre-scale translation/yaw corrections at a corner.
+    # Preserve these requests; task_hold and the watchdog still issue exact zero.
+    deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
 
 # No proximity slowdown. Emergency contact stop remains authoritative.
@@ -364,7 +395,7 @@ collision_monitor:
     use_sim_time: true
     base_frame_id: <robot_name>/base_footprint
     odom_frame_id: <robot_name>/odom
-    cmd_vel_in_topic: cmd_vel_smoothed
+    cmd_vel_in_topic: cmd_vel_reserved
     cmd_vel_out_topic: cmd_vel
     transform_tolerance: 0.2
     source_timeout: 1.0
@@ -386,7 +417,7 @@ collision_monitor:
       - right
       - turning
       forward:
-        points: '[[0.456, 0.344], [0.456, -0.344], [0, -0.344], [0, 0.344]]'
+        points: '[[0.7628574, 0.6125], [0.7628574, -0.6125], [0.0, -0.6125], [0.0, 0.6125]]'
         linear_min: 0.02
         linear_max: 2.0
         theta_min: -0.1
@@ -394,7 +425,7 @@ collision_monitor:
         direction_start_angle: -0.7853981633974483
         direction_end_angle: 0.7853981633974483
       reverse_left:
-        points: '[[0, 0.344], [0, -0.344], [-0.456, -0.344], [-0.456, 0.344]]'
+        points: '[[0.0, 0.6125], [0.0, -0.6125], [-0.7628574, -0.6125], [-0.7628574, 0.6125]]'
         linear_min: 0.02
         linear_max: 2.0
         theta_min: -0.1
@@ -402,7 +433,7 @@ collision_monitor:
         direction_start_angle: 2.356194490192345
         direction_end_angle: 3.141592653589793
       reverse_right:
-        points: '[[0, 0.344], [0, -0.344], [-0.456, -0.344], [-0.456, 0.344]]'
+        points: '[[0.0, 0.6125], [0.0, -0.6125], [-0.7628574, -0.6125], [-0.7628574, 0.6125]]'
         linear_min: 0.02
         linear_max: 2.0
         theta_min: -0.1
@@ -410,7 +441,7 @@ collision_monitor:
         direction_start_angle: -3.141592653589793
         direction_end_angle: -2.356194490192345
       left:
-        points: '[[0.386, 0.414], [0.386, 0], [-0.386, 0], [-0.386, 0.414]]'
+        points: '[[0.6928564, 0.6825], [0.6928564, 0.0], [-0.6928564, 0.0], [-0.6928564, 0.6825]]'
         linear_min: 0.02
         linear_max: 2.0
         theta_min: -0.1
@@ -418,7 +449,7 @@ collision_monitor:
         direction_start_angle: 0.7853981633974483
         direction_end_angle: 2.356194490192345
       right:
-        points: '[[0.386, 0], [0.386, -0.414], [-0.386, -0.414], [-0.386, 0]]'
+        points: '[[0.6928564, 0.0], [0.6928564, -0.6825], [-0.6928564, -0.6825], [-0.6928564, 0.0]]'
         linear_min: 0.02
         linear_max: 2.0
         theta_min: -0.1
@@ -426,7 +457,7 @@ collision_monitor:
         direction_start_angle: -2.356194490192345
         direction_end_angle: -0.7853981633974483
       turning:
-        points: '[[0.366, 0.324], [0.366, -0.324], [-0.366, -0.324], [-0.366, 0.324]]'
+        points: '[[0.6728564, 0.5925], [0.6728564, -0.5925], [-0.6728564, -0.5925], [-0.6728564, 0.5925]]'
         linear_min: 0.0
         linear_max: 2.0
         theta_min: -100.0

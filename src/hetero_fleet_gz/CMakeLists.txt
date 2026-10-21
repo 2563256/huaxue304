@@ -28,6 +28,9 @@ install(DIRECTORY worlds launch models policies
 
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(g1_planar_tracker_test test/g1_planar_tracker_test.cpp)
+  target_compile_features(g1_planar_tracker_test PRIVATE cxx_std_17)
+  add_test(NAME g1_planar_velocity_tracking COMMAND g1_planar_tracker_test)
   add_executable(g1_policy_test test/g1_policy_test.cpp)
   target_compile_features(g1_policy_test PRIVATE cxx_std_17)
   target_link_libraries(g1_policy_test PRIVATE Eigen3::Eigen)

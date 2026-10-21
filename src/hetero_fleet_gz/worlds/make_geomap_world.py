@@ -89,9 +89,9 @@ ZONES = [
     ("dropoff_C", 11.00,   4.22, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
     # Additional pads spread transport work along both arms of the ring.
     ("pickup_D", -2.00, 4.22, 0.6, 0.6, "0.10 0.85 0.20 0.55"),
-    ("pickup_E", 5.80, 0.05, 0.6, 0.6, "0.10 0.85 0.20 0.55"),
+    ("pickup_E", 5.80, -0.20, 0.6, 0.6, "0.10 0.85 0.20 0.55"),
     ("dropoff_D", 7.00, 4.22, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
-    ("dropoff_E", 0.00, 4.10, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
+    ("dropoff_E", 0.00, 4.22, 0.6, 0.6, "0.15 0.35 0.90 0.55"),
     # --- the charging station: a row against the south wall --------------
     # One charger per robot: every vehicle's spawn pose IS its charger (see
     # robot_profiles.yaml) and it drives back here when the fleet runs out of
@@ -115,10 +115,10 @@ ZONES = [
     # line, because the wall does not: it steps 0.2 m between x = 1.2 and 2.7.
     # tools/verify_scene.py checks every one of them (0.70-0.72 m clearance;
     # the widest robot needs 0.53 m).
-    ("charger_A",  -0.30,  -0.75, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
+    ("charger_A",  -0.30,  -0.25, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
     ("charger_B", 1.20, -0.80, 0.50, 0.50, "0.25 0.90 0.65 0.55"),
-    ("charger_C",   2.70,  -0.85, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
-    ("charger_D",   4.20,  -0.85, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
+    ("charger_C",   2.70,  -0.45, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
+    ("charger_D",   4.60,  -0.45, 0.5, 0.5, "0.95 0.80 0.10 0.55"),
 ]
 
 HEAD = f"""<?xml version='1.0'?>

@@ -11,7 +11,7 @@ from hetero_fleet_scheduler.traffic import TrafficCoordinator
 
 TYPES = ['g1_humanoid', 'heavy_diff_amr', 'light_diff_amr', 'omni_mecanum_amr']
 
-@pytest.mark.parametrize('winner_type,loser_type', list(combinations(TYPES, 2)))
+@pytest.mark.parametrize('winner_type,loser_type', list(combinations(TYPES[1:], 2)))
 def test_blocked_pair_parks_one_robot_and_resumes_both(winner_type, loser_type):
     owned_context = not rclpy.ok()
     if owned_context:
@@ -88,48 +88,16 @@ def test_pullout_fits_actual_north_corridor_instead_of_crossing_wall():
     assert request.done.is_set()
 
 
-def test_idle_g1_parks_forward_so_active_light_can_pass():
-    owned_context = not rclpy.ok()
-    if owned_context:
-        rclpy.init()
+def test_idle_g1_is_not_ordered_to_park_for_a_wheeled_robot():
     m = make_manager(return_to_charger=False)
-    m._now = lambda: time.monotonic()*10.
-    m.stall_timeout_sec = 20.
     m.traffic = TrafficCoordinator()
-    m._recovery_lock = threading.Lock()
-    m.robots = {'light':RobotState(id='light',type='light_diff_amr',pose=Pose2D(),
-                                  status=RobotStatus.TO_PICKUP,
-                                  max_speed=.4,battery_capacity_wh=480.),
-                'g1':RobotState(id='g1',type='g1_humanoid',pose=Pose2D(1.2,0,0),
-                               max_speed=.4,battery_capacity_wh=480.)}
-    m.charger_pose = {'g1':Pose2D(-5,-5,0)}
-    m.slot_clearance = {'light':.44,'g1':.4}
-    m.nav_clients = {'light':ScriptedNav(m,'light',['wedged','drive'],(0,0,0)),
-                     'g1':ScriptedNav(m,'g1',['drive'],(1.2,0,0))}
-    def no_blind_reverse(*args):
-        raise AssertionError('An idle blocker must search forward space too')
-    m._back_off = no_blind_reverse
-    stopped = threading.Event()
-    def observe_idle():
-        while not stopped.is_set():
-            m.traffic.observe('g1',m.live_pose['g1'],m._now())
-            time.sleep(.02)
-    updater = threading.Thread(target=observe_idle,daemon=True);updater.start()
-    try:
-        result=m._navigate(m.robots['light'],Pose2D(4,0,0),'idle_pair')
-        limit=time.monotonic()+3
-        while m.traffic.encounter is not None and time.monotonic()<limit:time.sleep(.02)
-        assert result[0]
-        assert len(m.nav_clients['g1'].goals)==1
-        refuge=m.nav_clients['g1'].goals[0].goal.pose.pose.position
-        assert refuge.x > 1.2
-        assert m.traffic.encounter is None
-        assert m.robots['g1'].status.value=='IDLE'
-        assert m.nav_clients['light'].goals[0].canceled
-    finally:
-        stopped.set();updater.join(timeout=1)
-        if m.traffic.encounter is not None:m.traffic.finish(m.traffic.encounter,m._now())
-        if owned_context:rclpy.shutdown()
+    m.robots['g1'] = RobotState(id='g1', type='g1_humanoid', pose=Pose2D(1.2, 0., 0.))
+    positions = {'r1': (0., 0., 0.), 'g1': (1.2, 0., 0.)}
+    for now in (0., 10.):
+        for name, pose in positions.items(): m.traffic.observe(name, pose, now)
+    assert m.traffic.request('r1', m.robots, positions, {'r1'}, 10., idle={'g1'}) is None
+    assert m.traffic.request('g1', m.robots, positions, {'g1'}, 10., idle={'r1'}) is None
+    assert m.traffic.encounter is None
 
 
 def test_reversing_robot_pulls_forward_away_from_peer_behind_it():

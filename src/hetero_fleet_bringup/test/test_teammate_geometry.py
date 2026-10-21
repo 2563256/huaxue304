@@ -61,6 +61,7 @@ def test_all_robots_see_both_other_bodies_without_physical_lidar(ego):
     obj.obstacle_pubs={name:Publisher() for name in dims}
     obj.contact_pubs={name:Publisher() for name in dims}
     obj.planning_pubs={name:Publisher() for name in dims}
+    obj.point_pubs={name:Publisher() for name in dims}
     obj.stationary_sec=10.0
     obj.get_clock=lambda:Clock()
     obj.publish_robot_obstacles()
@@ -105,9 +106,17 @@ def test_each_costmap_marks_and_clears_teammates_and_has_no_slowdown():
         data=yaml.safe_load((config/f'nav2_params_{typ}.yaml').read_text())
         for name in ['local_costmap','global_costmap']:
             p=data[name][name]['ros__parameters']
+            assert 'static_layer' in p['plugins']
+            assert p['static_layer']['map_subscribe_transient_local']
+            if name == 'local_costmap':
+                assert p['static_layer']['map_topic'] == '/<robot_name>/map'
+                assert p['static_layer']['footprint_clearing_enabled'] is False
             assert 'robot_obstacle_layer' in p['plugins']
+            assert p['robot_obstacle_layer']['plugin'] == 'hetero_fleet_navigation::SnapshotObstacleLayer'
             obs=p['robot_obstacle_layer']['robot_obstacles']
-            assert obs['marking'] and obs['clearing'] and obs['inf_is_valid']
+            assert obs['marking'] and not obs['clearing']
+            assert obs['data_type']=='PointCloud2'
+            assert obs['obstacle_max_range']>=30.
         assert data['controller_server']['ros__parameters']['FollowPath']['ObstaclesCritic']['consider_footprint']
         monitor=data['collision_monitor']['ros__parameters']
         assert monitor['polygons']==['PolygonStop']
@@ -169,6 +178,32 @@ def test_omni_only_parked_bodies_enter_global_planning():
     glob=data['global_costmap']['global_costmap']['ros__parameters']
     local=data['local_costmap']['local_costmap']['ros__parameters']
     assert 'obstacle_layer' not in glob['plugins']
-    assert glob['robot_obstacle_layer']['robot_obstacles']['topic'].endswith('/robot_planning_obstacles')
+    assert glob['robot_obstacle_layer']['robot_obstacles']['topic'].endswith('/robot_planning_points')
     assert 'obstacle_layer' in local['plugins']
-    assert local['robot_obstacle_layer']['robot_obstacles']['topic'].endswith('/robot_obstacles')
+    assert local['robot_obstacle_layer']['robot_obstacles']['topic'].endswith('/robot_planning_points')
+
+
+def test_full_peer_geometry_keeps_a_hidden_body_and_its_far_face():
+    # LaserScan deliberately cannot represent the second robot in line.
+    angles=np.linspace(-math.pi,math.pi,1080,endpoint=False)
+    near=relay.rectangle_returns(angles,2.,0.,0.,1.,1.)
+    far=relay.rectangle_returns(angles,4.,0.,0.,1.,1.)
+    visible=np.minimum(near,far)
+    assert not np.any(np.isfinite(far) & (far<near))
+    assert np.nanmax(np.where(np.isfinite(visible),visible,np.nan))<3.
+    # Planning receives filled, independent geometry for BOTH bodies.
+    points=np.concatenate([relay.rectangle_points(2.,0.,0.,1.,1.),
+                           relay.rectangle_points(4.,0.,0.,1.,1.)])
+    assert np.min(np.linalg.norm(points[:,:2]-[4.,0.],axis=1))<.04
+    assert np.any((points[:,0]==4.5)&(np.abs(points[:,1])<.1))
+
+
+def test_cloud_serialization_preserves_full_geometry_in_robot_frame():
+    from sensor_msgs_py.point_cloud2 import create_cloud_xyz32, read_points_numpy
+    from std_msgs.msg import Header
+    points=relay.rectangle_points(4.,2.,.7,1.6,1.2).astype(np.float32)
+    cloud=create_cloud_xyz32(Header(frame_id='g1_1/base_footprint'),points)
+    result=read_points_numpy(cloud,field_names=('x','y','z'))
+    assert result.shape==points.shape
+    assert np.allclose(result,points)
+    assert cloud.header.frame_id=='g1_1/base_footprint'

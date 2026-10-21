@@ -508,7 +508,8 @@ def test_navigate_accepts_an_arrival_the_navigator_never_confirmed():
     # It accepted the arrival instead of reversing away from the pad.
     assert len(nav.goals) == 1
     assert nav.goals[0].canceled is True
-    assert messages_containing("accepting the arrival")
+    assert robot.pose.x == pytest.approx(target.x)
+    assert nav.goals[0].goal.behavior_tree.endswith("task_navigation.xml")
 
 
 def test_navigate_does_not_accept_an_arrival_it_has_not_reached():

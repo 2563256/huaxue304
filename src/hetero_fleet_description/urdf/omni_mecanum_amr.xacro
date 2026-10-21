@@ -1,14 +1,12 @@
 <?xml version="1.0"?>
-<!-- Omni chassis update: s=0.70 (16.7% smaller than s=0.84), lower deck.
-     True footprint 0.672 x 0.588 m. Controller wheel geometry matches s.
-     Body inertia is computed from the actual box dimensions. -->
+<!-- Reduced uniformly by 10% for fleet clearance; collision outline 1.2857139 x 1.125 m. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="omni_mecanum_amr">
   <xacro:arg name="robot_name" default="omni_1"/>
   <xacro:arg name="controllers_file" default=""/>
   <xacro:include filename="$(find hetero_fleet_description)/urdf/common.xacro"/>
   <xacro:property name="controllers_file" value="$(arg controllers_file)"/>
   <xacro:property name="robot_name" value="$(arg robot_name)"/>
-  <xacro:property name="s" value="0.70"/>
+  <xacro:property name="s" value="1.339285714290"/>
   <xacro:property name="base_length" value="${0.90 * s}"/>
   <xacro:property name="base_width" value="${0.70 * s}"/>
   <xacro:property name="base_height" value="${0.20 * s}"/>

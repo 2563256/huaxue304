@@ -1,0 +1,10 @@
+fleet_manager:
+  ros__parameters:
+    scheduling_method: cp_sat_rhcr
+    rolling_period_sec: 5.0
+    rolling_commit_sec: 2.0
+    rolling_horizon_sec: 1800.0
+    rolling_max_tasks: 20
+    cp_sat_budget_sec: 0.5
+    schedule_drift_sec: 15.0
+    travel_time_factor: 1.5
